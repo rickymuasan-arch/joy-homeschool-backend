@@ -215,6 +215,46 @@ exports.deleteRejectedAdmin = async (req, res) => {
 };
 
 // ============================================
+// USER MANAGEMENT - ✅ THIS WAS MISSING!
+// ============================================
+exports.changeUserEmail = async (req, res) => {
+    try {
+        const { newEmail } = req.body;
+        const userId = req.params.userId;
+
+        if (!newEmail) {
+            return res.status(400).json({ message: 'New email is required' });
+        }
+
+        const existingUser = await User.findOne({ email: newEmail.toLowerCase() });
+        if (existingUser && existingUser._id.toString() !== userId) {
+            return res.status(400).json({ message: 'Email already in use' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        user.email = newEmail.toLowerCase();
+        await user.save();
+
+        console.log(`📧 Email changed for ${user.fullName}: ${user.email}`);
+
+        res.json({
+            message: 'Email updated successfully',
+            user: {
+                id: user._id,
+                email: user.email
+            }
+        });
+    } catch (error) {
+        console.error('Change email error:', error);
+        res.status(500).json({ message: 'Error changing email' });
+    }
+};
+
+// ============================================
 // PAYMENT MANAGEMENT
 // ============================================
 exports.getPayments = async (req, res) => {
@@ -404,7 +444,6 @@ exports.createEvent = async (req, res) => {
     }
 };
 
-// ✅ THIS WAS MISSING - NOW ADDED!
 exports.updateEvent = async (req, res) => {
     try {
         const event = await Event.findByIdAndUpdate(
