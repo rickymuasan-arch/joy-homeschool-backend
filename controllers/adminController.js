@@ -404,7 +404,7 @@ exports.createEvent = async (req, res) => {
     }
 };
 
-// ✅ ADD THIS FUNCTION - IT WAS MISSING!
+// ✅ THIS WAS MISSING - NOW ADDED!
 exports.updateEvent = async (req, res) => {
     try {
         const event = await Event.findByIdAndUpdate(
