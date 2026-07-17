@@ -9,6 +9,8 @@ exports.submitContact = async (req, res) => {
         }
         const contact = new Contact({ name, email, phone, subject, message });
         await contact.save();
+
+        // ✅ SEND EMAILS - KEEP THIS!
         try {
             await sendContactEmail({ name, email, phone, subject, message });
         } catch (emailError) {
@@ -19,6 +21,7 @@ exports.submitContact = async (req, res) => {
         } catch (emailError) {
             console.error('Error sending auto-reply:', emailError);
         }
+
         res.status(201).json({
             message: 'Your enquiry has been submitted successfully. We will get back to you soon!'
         });

@@ -1,49 +1,29 @@
 const express = require('express');
-const jwt = require('jsonwebtoken');
-
-const Parent = require('../models/Parent');
+const router = express.Router();
+const { authenticate, isParent } = require('../middleware/auth');
 const Student = require('../models/Student');
 const ReportCard = require('../models/ReportCard');
 const Payment = require('../models/Payment');
-const Download = require('../models/Download');
 const Event = require('../models/Event');
-const FeeStructure = require('../models/FeeStructure');
-
-const router = express.Router();
 
 // ============================================
-// MIDDLEWARE: Verify Parent
+// ALL ROUTES REQUIRE AUTHENTICATION
 // ============================================
-const verifyParent = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
-    if (!token) {
-        return res.status(401).json({ message: 'No token provided' });
-    }
-
-    try {
-        const decoded = jwt.verify(token, 'aviora_secret_key');
-        if (decoded.role !== 'parent') {
-            return res.status(403).json({ message: 'Access denied' });
-        }
-        req.parentId = decoded.id;
-        next();
-    } catch (err) {
-        res.status(401).json({ message: 'Invalid token' });
-    }
-};
+router.use(authenticate);
+router.use(isParent);
 
 // ============================================
 // GET PARENT PROFILE
 // ============================================
-router.get('/profile', verifyParent, async (req, res) => {
+router.get('/profile', async (req, res) => {
     try {
-        const parent = await Parent.findById(req.parentId).populate('children');
-        if (!parent) {
-            return res.status(404).json({ message: 'Parent not found' });
+        const user = await User.findById(req.user._id).select('-password');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
         }
-        res.json(parent);
+        res.json(user);
     } catch (err) {
-        console.error(err);
+        console.error('Get profile error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -51,15 +31,12 @@ router.get('/profile', verifyParent, async (req, res) => {
 // ============================================
 // GET PARENT'S CHILDREN
 // ============================================
-router.get('/children', verifyParent, async (req, res) => {
+router.get('/children', async (req, res) => {
     try {
-        const parent = await Parent.findById(req.parentId).populate('children');
-        if (!parent) {
-            return res.status(404).json({ message: 'Parent not found' });
-        }
-        res.json(parent.children);
+        const children = await Student.find({ parentId: req.user._id });
+        res.json(children);
     } catch (err) {
-        console.error(err);
+        console.error('Get children error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -67,7 +44,7 @@ router.get('/children', verifyParent, async (req, res) => {
 // ============================================
 // ADD CHILD (PARENT)
 // ============================================
-router.post('/add-child', verifyParent, async (req, res) => {
+router.post('/add-child', async (req, res) => {
     try {
         const { name, dob, curriculum, grade } = req.body;
 
@@ -75,28 +52,26 @@ router.post('/add-child', verifyParent, async (req, res) => {
             return res.status(400).json({ message: 'All fields are required' });
         }
 
-        const parent = await Parent.findById(req.parentId);
-        if (!parent) {
-            return res.status(404).json({ message: 'Parent not found' });
-        }
-
         const student = new Student({
             fullName: name,
             dateOfBirth: dob,
-            parentId: parent._id,
-            curriculum,
-            grade,
+            parentId: req.user._id,
+            parentName: req.user.fullName,
+            parentEmail: req.user.email,
+            parentPhone: req.user.phone || '',
+            curriculum: curriculum,
+            grade: grade,
             isActive: true
         });
 
         await student.save();
 
-        parent.children.push(student._id);
-        await parent.save();
-
-        res.status(201).json({ message: 'Child added successfully', child: student });
+        res.status(201).json({
+            message: 'Child added successfully',
+            child: student
+        });
     } catch (err) {
-        console.error(err);
+        console.error('Add child error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -104,19 +79,40 @@ router.post('/add-child', verifyParent, async (req, res) => {
 // ============================================
 // GET CHILD'S REPORT CARDS
 // ============================================
-router.get('/child-reports/:studentId', verifyParent, async (req, res) => {
+router.get('/child-reports/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
 
-        const parent = await Parent.findById(req.parentId);
-        if (!parent.children.includes(studentId)) {
+        // Verify student belongs to this parent
+        const student = await Student.findOne({ _id: studentId, parentId: req.user._id });
+        if (!student) {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        const reportCards = await ReportCard.find({ studentId, isActive: true }).sort({ year: -1, term: -1 });
+        const reportCards = await ReportCard.find({ 
+            studentId: studentId,
+            isActive: true 
+        }).sort({ year: -1, term: -1 });
+
         res.json(reportCards);
     } catch (err) {
-        console.error(err);
+        console.error('Get child reports error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// GET ALL REPORT CARDS FOR PARENT
+// ============================================
+router.get('/report-cards', async (req, res) => {
+    try {
+        const reportCards = await ReportCard.find({ 
+            parentId: req.user._id 
+        }).sort({ createdAt: -1 });
+
+        res.json(reportCards);
+    } catch (err) {
+        console.error('Get report cards error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -124,19 +120,24 @@ router.get('/child-reports/:studentId', verifyParent, async (req, res) => {
 // ============================================
 // GET PAYMENTS FOR CHILD
 // ============================================
-router.get('/child-payments/:studentId', verifyParent, async (req, res) => {
+router.get('/child-payments/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
 
-        const parent = await Parent.findById(req.parentId);
-        if (!parent.children.includes(studentId)) {
+        // Verify student belongs to this parent
+        const student = await Student.findOne({ _id: studentId, parentId: req.user._id });
+        if (!student) {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        const payments = await Payment.find({ studentId, parentId: req.parentId }).sort({ paymentDate: -1 });
+        const payments = await Payment.find({ 
+            studentId: studentId, 
+            parentId: req.user._id 
+        }).sort({ paymentDate: -1 });
+
         res.json(payments);
     } catch (err) {
-        console.error(err);
+        console.error('Get child payments error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -144,7 +145,7 @@ router.get('/child-payments/:studentId', verifyParent, async (req, res) => {
 // ============================================
 // SUBMIT PAYMENT (PARENT)
 // ============================================
-router.post('/submit-payment', verifyParent, async (req, res) => {
+router.post('/submit-payment', async (req, res) => {
     try {
         const { childId, amount, term, method, reference } = req.body;
 
@@ -166,26 +167,18 @@ router.post('/submit-payment', verifyParent, async (req, res) => {
         }
 
         // Verify child belongs to this parent
-        const parent = await Parent.findById(req.parentId);
-        if (!parent) {
-            return res.status(404).json({ message: 'Parent not found' });
-        }
-
-        if (!parent.children.includes(childId)) {
-            return res.status(403).json({ message: 'This child does not belong to you' });
-        }
-
-        // Check if student exists
-        const student = await Student.findById(childId);
+        const student = await Student.findOne({ _id: childId, parentId: req.user._id });
         if (!student) {
-            return res.status(404).json({ message: 'Student not found' });
+            return res.status(403).json({ message: 'This child does not belong to you' });
         }
 
         // Create payment record
         const payment = new Payment({
             studentId: childId,
-            parentId: req.parentId,
-            amount: amount,
+            parentId: req.user._id,
+            parentName: req.user.fullName,
+            studentName: student.fullName,
+            amount: parseInt(amount),
             term: term,
             method: method,
             reference: reference.trim(),
@@ -218,15 +211,15 @@ router.post('/submit-payment', verifyParent, async (req, res) => {
 // ============================================
 // GET PAYMENT HISTORY (PARENT)
 // ============================================
-router.get('/payment-history', verifyParent, async (req, res) => {
+router.get('/payment-history', async (req, res) => {
     try {
-        const payments = await Payment.find({ parentId: req.parentId })
+        const payments = await Payment.find({ parentId: req.user._id })
             .populate('studentId', 'fullName')
             .sort({ paymentDate: -1 });
 
         res.json(payments);
     } catch (err) {
-        console.error(err);
+        console.error('Get payment history error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -234,7 +227,7 @@ router.get('/payment-history', verifyParent, async (req, res) => {
 // ============================================
 // DOWNLOAD REPORT CARD
 // ============================================
-router.get('/download-report/:reportId', verifyParent, async (req, res) => {
+router.get('/download-report/:reportId', async (req, res) => {
     try {
         const report = await ReportCard.findById(req.params.reportId);
         if (!report) {
@@ -242,8 +235,11 @@ router.get('/download-report/:reportId', verifyParent, async (req, res) => {
         }
 
         // Verify the student belongs to this parent
-        const parent = await Parent.findById(req.parentId);
-        if (!parent.children.includes(report.studentId.toString())) {
+        const student = await Student.findOne({ 
+            _id: report.studentId, 
+            parentId: req.user._id 
+        });
+        if (!student) {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -257,20 +253,7 @@ router.get('/download-report/:reportId', verifyParent, async (req, res) => {
             teacherRemarks: report.teacherRemarks
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// ============================================
-// GET DOWNLOADS
-// ============================================
-router.get('/downloads', verifyParent, async (req, res) => {
-    try {
-        const downloads = await Download.find({ isActive: true }).sort({ uploadDate: -1 });
-        res.json(downloads);
-    } catch (err) {
-        console.error(err);
+        console.error('Download report error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
@@ -278,41 +261,28 @@ router.get('/downloads', verifyParent, async (req, res) => {
 // ============================================
 // GET EVENTS (FILTERED BY PARENT'S CHILDREN CURRICULUM)
 // ============================================
-router.get('/events', verifyParent, async (req, res) => {
+router.get('/events', async (req, res) => {
     try {
-        const parent = await Parent.findById(req.parentId).populate('children');
-        if (!parent) {
-            return res.status(404).json({ message: 'Parent not found' });
-        }
-
-        const curricula = parent.children.map(child => child.curriculum);
+        // Get parent's children
+        const children = await Student.find({ parentId: req.user._id });
+        
+        // Get unique curricula from children
+        const curricula = children.map(child => child.curriculum);
         const uniqueCurricula = [...new Set(curricula)];
 
+        // Get events matching child's curriculum or "All"
         const events = await Event.find({
             isActive: true,
             startDate: { $gte: new Date() },
             $or: [
-                { targetCurriculum: 'All' },
-                { targetCurriculum: { $in: uniqueCurricula } }
+                { curriculum: 'All' },
+                { curriculum: { $in: uniqueCurricula } }
             ]
         }).sort({ startDate: 1 });
 
         res.json(events);
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// ============================================
-// GET FEE STRUCTURE
-// ============================================
-router.get('/fee-structure', verifyParent, async (req, res) => {
-    try {
-        const feeStructures = await FeeStructure.find({ isActive: true });
-        res.json(feeStructures);
-    } catch (err) {
-        console.error(err);
+        console.error('Get events error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });

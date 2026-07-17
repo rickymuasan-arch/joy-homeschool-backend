@@ -1,14 +1,19 @@
 const User = require('../models/User');
-const Parent = require('../models/Parent');
 const Student = require('../models/Student');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { sendPasswordResetEmail, sendEmail } = require('../utils/email');
 
+// ============================================
+// REGISTER PARENT
+// ============================================
 exports.register = async (req, res) => {
     try {
+        console.log('📝 Register request received');
+
         const { parentName, parentEmail, parentPhone, parentPassword, studentName, studentDOB, curriculum, grade } = req.body;
 
+        // Validate
         if (!parentName || !parentEmail || !parentPassword || !studentName) {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
@@ -16,93 +21,97 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: 'Password must be at least 8 characters' });
         }
 
+        // Check if user exists
         const existingUser = await User.findOne({ email: parentEmail.toLowerCase() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email already registered' });
         }
 
-        const parent = new Parent({
-            fullName: parentName,
-            email: parentEmail.toLowerCase(),
-            phone: parentPhone,
-            isApproved: false
-        });
-        await parent.save();
+        // Hash password
+        const hashedPassword = await bcrypt.hash(parentPassword, 10);
 
+        // ✅ Create User (ONLY User model - NO Parent model!)
         const user = new User({
             fullName: parentName,
             email: parentEmail.toLowerCase(),
-            password: parentPassword,
-            phone: parentPhone,
+            password: hashedPassword,
+            phone: parentPhone || '',
             role: 'parent',
             isApproved: false,
-            parentId: parent._id
+            isActive: true
         });
         await user.save();
+        console.log('✅ User created:', user._id);
 
+        // Create Student
         const student = new Student({
             fullName: studentName,
             dateOfBirth: studentDOB,
+            parentId: user._id,
+            parentName: parentName,
+            parentEmail: parentEmail.toLowerCase(),
+            parentPhone: parentPhone || '',
             curriculum: curriculum || 'IGCSE',
             grade: grade || 'Year 7',
-            parentId: parent._id,
             isActive: true
         });
         await student.save();
-
-        parent.children = [student._id];
-        await parent.save();
-
-        try {
-            await sendEmail({
-                to: process.env.ADMIN_EMAIL || 'info@joyhomeschool.co.ke',
-                subject: 'New Parent Registration - Pending Approval',
-                html: `
-                    <h2>New Parent Registration</h2>
-                    <p><strong>Name:</strong> ${parentName}</p>
-                    <p><strong>Email:</strong> ${parentEmail}</p>
-                    <p><strong>Phone:</strong> ${parentPhone || 'Not provided'}</p>
-                    <p><strong>Student:</strong> ${studentName}</p>
-                    <p>Please log in to the admin dashboard to approve this registration.</p>
-                `
-            });
-        } catch (err) {
-            console.error('Error sending admin notification:', err);
-        }
+        console.log('✅ Student created:', student._id);
 
         res.status(201).json({
             message: 'Registration successful! Please wait for admin approval.',
-            parentId: parent._id,
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                role: user.role,
+                isApproved: user.isApproved
+            },
             studentId: student._id
         });
+
     } catch (error) {
-        console.error('Register error:', error);
-        res.status(500).json({ message: 'Server error' });
+        console.error('❌ Register error:', error);
+        res.status(500).json({ 
+            message: 'Server error during registration: ' + error.message
+        });
     }
 };
 
+// ============================================
+// LOGIN
+// ============================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+
         const user = await User.findOne({ email: email.toLowerCase() });
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
+
+        // Check if parent is approved
         if (user.role === 'parent' && !user.isApproved) {
-            return res.status(403).json({ message: 'Your account is pending approval.' });
+            return res.status(403).json({
+                message: 'Your account is pending approval. Please wait for admin verification.'
+            });
         }
+
         if (!user.isActive) {
             return res.status(403).json({ message: 'Your account has been deactivated.' });
         }
-        const isMatch = await user.comparePassword(password);
+
+        const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
+
         const token = jwt.sign(
-            { id: user._id, role: user.role },
-            process.env.JWT_SECRET,
+            { id: user._id, email: user.email, role: user.role },
+            process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '7d' }
         );
+
         res.json({
             token,
             user: {
@@ -111,57 +120,23 @@ exports.login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 isApproved: user.isApproved,
-                phone: user.phone
+                phone: user.phone || ''
             }
         });
+
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error during login' });
     }
 };
 
-exports.adminLogin = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        const user = await User.findOne({ email: email.toLowerCase() });
-        if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-        if (user.role !== 'admin' && user.role !== 'super_admin') {
-            return res.status(403).json({ message: 'Access denied. Admins only.' });
-        }
-        if (!user.isActive) {
-            return res.status(403).json({ message: 'Your account has been deactivated.' });
-        }
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-        const token = jwt.sign(
-            { id: user._id, role: user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-        res.json({
-            token,
-            user: {
-                id: user._id,
-                fullName: user.fullName,
-                email: user.email,
-                role: user.role,
-                isApproved: user.isApproved
-            }
-        });
-    } catch (error) {
-        console.error('Admin login error:', error);
-        res.status(500).json({ message: 'Server error' });
-    }
-};
-
+// ============================================
+// FORGOT PASSWORD
+// ============================================
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
-        
+
         if (!email) {
             return res.status(400).json({ message: 'Email is required' });
         }
@@ -172,27 +147,37 @@ exports.forgotPassword = async (req, res) => {
         }
 
         const resetToken = crypto.randomBytes(32).toString('hex');
-        const resetTokenExpiry = Date.now() + 3600000; // 1 hour
+        const resetTokenExpiry = Date.now() + 3600000;
 
         user.resetPasswordToken = resetToken;
         user.resetPasswordExpires = resetTokenExpiry;
         await user.save();
 
-        await sendPasswordResetEmail({ email: user.email, resetToken });
+        console.log(`🔑 Password reset token for ${email}: ${resetToken}`);
 
-        res.json({ message: 'Password reset link sent to your email' });
+        res.json({
+            message: 'Password reset link would be sent to your email. Please contact admin for password reset.'
+        });
+
     } catch (error) {
         console.error('Forgot password error:', error);
-        res.status(500).json({ message: 'Error sending reset link' });
+        res.status(500).json({ message: 'Error processing request' });
     }
 };
 
+// ============================================
+// RESET PASSWORD
+// ============================================
 exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
-        
+
         if (!token || !newPassword) {
             return res.status(400).json({ message: 'Token and new password are required' });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters' });
         }
 
         const user = await User.findOne({
@@ -204,16 +189,14 @@ exports.resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Invalid or expired reset token' });
         }
 
-        if (newPassword.length < 8) {
-            return res.status(400).json({ message: 'Password must be at least 8 characters' });
-        }
-
-        user.password = newPassword;
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        user.password = hashedPassword;
         user.resetPasswordToken = null;
         user.resetPasswordExpires = null;
         await user.save();
 
         res.json({ message: 'Password reset successfully' });
+
     } catch (error) {
         console.error('Reset password error:', error);
         res.status(500).json({ message: 'Error resetting password' });

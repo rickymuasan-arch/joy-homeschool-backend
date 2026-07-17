@@ -1,17 +1,38 @@
 const User = require('../models/User');
-const Parent = require('../models/Parent');
 const Student = require('../models/Student');
 const Payment = require('../models/Payment');
 const Event = require('../models/Event');
 const ReportCard = require('../models/ReportCard');
-const { sendEmail } = require('../utils/email');
+const bcrypt = require('bcryptjs');
+
+// ============================================
+// DASHBOARD STATS
+// ============================================
+exports.getStats = async (req, res) => {
+    try {
+        const parentCount = await User.countDocuments({ role: 'parent' });
+        const studentCount = await Student.countDocuments();
+        const pendingCount = await User.countDocuments({ role: 'parent', isApproved: false });
+        const adminCount = await User.countDocuments({ role: { $in: ['admin', 'super_admin'] } });
+
+        res.json({
+            parentCount,
+            studentCount,
+            pendingCount,
+            adminCount
+        });
+    } catch (error) {
+        console.error('Get stats error:', error);
+        res.status(500).json({ message: 'Error fetching stats' });
+    }
+};
 
 // ============================================
 // PARENT MANAGEMENT
 // ============================================
 exports.getParents = async (req, res) => {
     try {
-        const parents = await Parent.find().populate('children');
+        const parents = await User.find({ role: 'parent' }).select('-password');
         res.json(parents);
     } catch (error) {
         console.error('Get parents error:', error);
@@ -21,30 +42,21 @@ exports.getParents = async (req, res) => {
 
 exports.approveParent = async (req, res) => {
     try {
-        const parent = await Parent.findById(req.params.id);
+        const parent = await User.findById(req.params.id);
         if (!parent) {
             return res.status(404).json({ message: 'Parent not found' });
         }
+
+        if (parent.role !== 'parent') {
+            return res.status(400).json({ message: 'User is not a parent' });
+        }
+
         parent.isApproved = true;
         await parent.save();
-        await User.findOneAndUpdate({ parentId: parent._id }, { isApproved: true });
-        try {
-            await sendEmail({
-                to: parent.email,
-                subject: 'Your Joy Homeschool Account Has Been Approved',
-                html: `
-                    <h2>Account Approved!</h2>
-                    <p>Dear ${parent.fullName},</p>
-                    <p>Your Joy Homeschool account has been approved by the admin.</p>
-                    <p>You can now log in to your account.</p>
-                    <p><a href="https://www.joyhomeschool.co.ke" style="display:inline-block;padding:12px 24px;background:#E8A838;color:#0B1A4A;text-decoration:none;border-radius:8px;font-weight:bold;">Login Now</a></p>
-                    <p>— Joy Homeschool Team</p>
-                `
-            });
-        } catch (err) {
-            console.error('Error sending approval email:', err);
-        }
-        res.json({ message: 'Parent approved successfully' });
+
+        console.log(`✅ Parent approved: ${parent.fullName} (${parent.email})`);
+
+        res.json({ message: 'Parent approved successfully', parent });
     } catch (error) {
         console.error('Approve parent error:', error);
         res.status(500).json({ message: 'Error approving parent' });
@@ -57,15 +69,18 @@ exports.deleteRejectedParent = async (req, res) => {
         if (!parent) {
             return res.status(404).json({ message: 'Parent not found' });
         }
+
         if (parent.role !== 'parent') {
             return res.status(400).json({ message: 'User is not a parent' });
         }
+
         if (parent.isApproved) {
             return res.status(400).json({ message: 'Only rejected parents can be deleted' });
         }
+
         await Student.deleteMany({ parentId: parent._id });
         await User.findByIdAndDelete(req.params.parentId);
-        await Parent.findByIdAndDelete(req.params.parentId);
+
         res.json({ message: 'Rejected parent deleted successfully' });
     } catch (error) {
         console.error('Delete rejected parent error:', error);
@@ -78,7 +93,7 @@ exports.deleteRejectedParent = async (req, res) => {
 // ============================================
 exports.getStudents = async (req, res) => {
     try {
-        const students = await Student.find().populate('parentId');
+        const students = await Student.find().populate('parentId', 'fullName email');
         res.json(students);
     } catch (error) {
         console.error('Get students error:', error);
@@ -91,8 +106,8 @@ exports.getStudents = async (req, res) => {
 // ============================================
 exports.getAdmins = async (req, res) => {
     try {
-        const admins = await User.find({ 
-            role: { $in: ['admin', 'super_admin'] } 
+        const admins = await User.find({
+            role: { $in: ['admin', 'super_admin'] }
         }).select('-password');
         res.json(admins);
     } catch (error) {
@@ -104,23 +119,49 @@ exports.getAdmins = async (req, res) => {
 exports.createAdmin = async (req, res) => {
     try {
         const { fullName, email, password, role } = req.body;
+
         if (!fullName || !email || !password) {
             return res.status(400).json({ message: 'Please fill in all fields' });
         }
+
+        if (password.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters' });
+        }
+
+        const adminCount = await User.countDocuments({ role: 'admin' });
+        if (adminCount >= 30) {
+            return res.status(400).json({ message: 'Maximum admin limit (30) reached.' });
+        }
+
         const existingUser = await User.findOne({ email: email.toLowerCase() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email already in use' });
         }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
         const user = new User({
             fullName,
             email: email.toLowerCase(),
-            password,
+            password: hashedPassword,
             role: role || 'admin',
             isApproved: true,
             isActive: true
         });
+
         await user.save();
-        res.status(201).json({ message: 'Admin created successfully', user: { id: user._id, fullName, email, role: user.role } });
+
+        console.log(`✅ New admin created: ${fullName} (${email})`);
+
+        res.status(201).json({
+            message: 'Admin created successfully',
+            user: {
+                id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                role: user.role
+            }
+        });
     } catch (error) {
         console.error('Create admin error:', error);
         res.status(500).json({ message: 'Error creating admin' });
@@ -133,9 +174,15 @@ exports.deleteAdmin = async (req, res) => {
         if (!admin) {
             return res.status(404).json({ message: 'Admin not found' });
         }
+
         if (admin.role === 'super_admin') {
             return res.status(403).json({ message: 'Cannot delete Super Admin' });
         }
+
+        if (admin.role !== 'admin') {
+            return res.status(400).json({ message: 'User is not an admin' });
+        }
+
         await User.findByIdAndDelete(req.params.adminId);
         res.json({ message: 'Admin deleted successfully' });
     } catch (error) {
@@ -150,12 +197,15 @@ exports.deleteRejectedAdmin = async (req, res) => {
         if (!admin) {
             return res.status(404).json({ message: 'Admin not found' });
         }
+
         if (admin.role !== 'admin' && admin.role !== 'super_admin') {
             return res.status(400).json({ message: 'User is not an admin' });
         }
+
         if (admin.isActive) {
             return res.status(400).json({ message: 'Only deactivated admins can be deleted' });
         }
+
         await User.findByIdAndDelete(req.params.adminId);
         res.json({ message: 'Rejected admin deleted successfully' });
     } catch (error) {
@@ -165,69 +215,14 @@ exports.deleteRejectedAdmin = async (req, res) => {
 };
 
 // ============================================
-// USER MANAGEMENT
-// ============================================
-exports.changeUserEmail = async (req, res) => {
-    try {
-        const { newEmail } = req.body;
-        const userId = req.params.userId;
-        if (!newEmail) {
-            return res.status(400).json({ message: 'New email is required' });
-        }
-        const existingUser = await User.findOne({ email: newEmail.toLowerCase() });
-        if (existingUser) {
-            return res.status(400).json({ message: 'Email already in use' });
-        }
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        const oldEmail = user.email;
-        user.email = newEmail.toLowerCase();
-        await user.save();
-        try {
-            await sendEmail({
-                to: oldEmail,
-                subject: 'Your email has been changed',
-                html: `
-                    <h2>Email Change Notification</h2>
-                    <p>Your email address has been changed.</p>
-                    <p><strong>Old Email:</strong> ${oldEmail}</p>
-                    <p><strong>New Email:</strong> ${newEmail}</p>
-                    <p>If you did not authorize this, please contact us immediately.</p>
-                    <p>— Joy Homeschool Team</p>
-                `
-            });
-        } catch (err) {
-            console.error('Error sending old email notification:', err);
-        }
-        try {
-            await sendEmail({
-                to: newEmail,
-                subject: 'Welcome to Joy Homeschool - Email Updated',
-                html: `
-                    <h2>Email Address Updated</h2>
-                    <p>Your email address has been updated.</p>
-                    <p>You can now log in with this email.</p>
-                    <p>— Joy Homeschool Team</p>
-                `
-            });
-        } catch (err) {
-            console.error('Error sending new email notification:', err);
-        }
-        res.json({ message: 'Email updated successfully', user: { id: user._id, email: user.email } });
-    } catch (error) {
-        console.error('Change email error:', error);
-        res.status(500).json({ message: 'Error changing email' });
-    }
-};
-
-// ============================================
-// PAYMENT MANAGEMENT
+// PAYMENT MANAGEMENT (NO EMAILS)
 // ============================================
 exports.getPayments = async (req, res) => {
     try {
-        const payments = await Payment.find().populate('studentId').populate('parentId');
+        const payments = await Payment.find()
+            .populate('studentId', 'fullName')
+            .populate('parentId', 'fullName email')
+            .sort({ createdAt: -1 });
         res.json(payments);
     } catch (error) {
         console.error('Get payments error:', error);
@@ -241,8 +236,12 @@ exports.approvePayment = async (req, res) => {
         if (!payment) {
             return res.status(404).json({ message: 'Payment not found' });
         }
+
         payment.status = 'Approved';
         await payment.save();
+
+        console.log(`✅ Payment approved: ${payment.studentId} - Ksh ${payment.amount}`);
+
         res.json({ message: 'Payment approved successfully' });
     } catch (error) {
         console.error('Approve payment error:', error);
@@ -256,8 +255,12 @@ exports.rejectPayment = async (req, res) => {
         if (!payment) {
             return res.status(404).json({ message: 'Payment not found' });
         }
+
         payment.status = 'Rejected';
         await payment.save();
+
+        console.log(`❌ Payment rejected: ${payment.studentId} - Ksh ${payment.amount}`);
+
         res.json({ message: 'Payment rejected' });
     } catch (error) {
         console.error('Reject payment error:', error);
@@ -271,9 +274,11 @@ exports.deleteRejectedPayment = async (req, res) => {
         if (!payment) {
             return res.status(404).json({ message: 'Payment not found' });
         }
+
         if (payment.status !== 'Rejected') {
             return res.status(400).json({ message: 'Only rejected payments can be deleted' });
         }
+
         await Payment.findByIdAndDelete(req.params.paymentId);
         res.json({ message: 'Rejected payment deleted successfully' });
     } catch (error) {
@@ -287,7 +292,39 @@ exports.deleteRejectedPayment = async (req, res) => {
 // ============================================
 exports.uploadReportCard = async (req, res) => {
     try {
-        res.json({ message: 'Report card uploaded successfully' });
+        const { studentId, term, year, overallGrade, teacherRemarks, classTeacher, fileName, fileType, fileData } = req.body;
+
+        if (!studentId || !term || !year) {
+            return res.status(400).json({ message: 'Student ID, term, and year are required' });
+        }
+
+        const student = await Student.findById(studentId);
+        if (!student) {
+            return res.status(404).json({ message: 'Student not found' });
+        }
+
+        const reportCard = new ReportCard({
+            studentId: student._id,
+            studentName: student.fullName,
+            parentId: student.parentId,
+            term,
+            year,
+            overallGrade: overallGrade || '',
+            teacherRemarks: teacherRemarks || '',
+            classTeacher: classTeacher || '',
+            fileData: fileData || null,
+            fileType: fileType || null,
+            fileName: fileName || null
+        });
+
+        await reportCard.save();
+
+        console.log(`📄 Report card uploaded for: ${student.fullName} - ${term} ${year}`);
+
+        res.status(201).json({
+            message: 'Report card uploaded successfully',
+            reportCard
+        });
     } catch (error) {
         console.error('Upload report card error:', error);
         res.status(500).json({ message: 'Error uploading report card' });
@@ -296,7 +333,10 @@ exports.uploadReportCard = async (req, res) => {
 
 exports.getReportCards = async (req, res) => {
     try {
-        const reportCards = await ReportCard.find().populate('studentId');
+        const reportCards = await ReportCard.find()
+            .populate('studentId', 'fullName')
+            .populate('parentId', 'fullName email')
+            .sort({ createdAt: -1 });
         res.json(reportCards);
     } catch (error) {
         console.error('Get report cards error:', error);
@@ -306,6 +346,11 @@ exports.getReportCards = async (req, res) => {
 
 exports.deleteReportCard = async (req, res) => {
     try {
+        const reportCard = await ReportCard.findById(req.params.reportId);
+        if (!reportCard) {
+            return res.status(404).json({ message: 'Report card not found' });
+        }
+
         await ReportCard.findByIdAndDelete(req.params.reportId);
         res.json({ message: 'Report card deleted successfully' });
     } catch (error) {
@@ -330,12 +375,29 @@ exports.getEvents = async (req, res) => {
 exports.createEvent = async (req, res) => {
     try {
         const { title, description, eventType, startDate, endDate, location, curriculum } = req.body;
+
         if (!title || !description || !eventType || !startDate) {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
-        const event = new Event({ title, description, eventType, startDate, endDate, location, curriculum });
+
+        const event = new Event({
+            title,
+            description,
+            eventType,
+            startDate,
+            endDate: endDate || null,
+            location: location || '',
+            curriculum: curriculum || 'All'
+        });
+
         await event.save();
-        res.status(201).json({ message: 'Event created successfully', event });
+
+        console.log(`📅 Event created: ${title} - ${eventType}`);
+
+        res.status(201).json({
+            message: 'Event created successfully',
+            event
+        });
     } catch (error) {
         console.error('Create event error:', error);
         res.status(500).json({ message: 'Error creating event' });
@@ -344,11 +406,20 @@ exports.createEvent = async (req, res) => {
 
 exports.updateEvent = async (req, res) => {
     try {
-        const event = await Event.findByIdAndUpdate(req.params.eventId, req.body, { new: true });
+        const event = await Event.findByIdAndUpdate(
+            req.params.eventId,
+            req.body,
+            { new: true, runValidators: true }
+        );
+
         if (!event) {
             return res.status(404).json({ message: 'Event not found' });
         }
-        res.json({ message: 'Event updated successfully', event });
+
+        res.json({
+            message: 'Event updated successfully',
+            event
+        });
     } catch (error) {
         console.error('Update event error:', error);
         res.status(500).json({ message: 'Error updating event' });
@@ -357,7 +428,11 @@ exports.updateEvent = async (req, res) => {
 
 exports.deleteEvent = async (req, res) => {
     try {
-        await Event.findByIdAndDelete(req.params.eventId);
+        const event = await Event.findByIdAndDelete(req.params.eventId);
+        if (!event) {
+            return res.status(404).json({ message: 'Event not found' });
+        }
+
         res.json({ message: 'Event deleted successfully' });
     } catch (error) {
         console.error('Delete event error:', error);

@@ -18,7 +18,8 @@ const UserSchema = new mongoose.Schema({
         required: true
     },
     phone: {
-        type: String
+        type: String,
+        default: ''
     },
     role: {
         type: String,
@@ -32,10 +33,6 @@ const UserSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
-    },
-    parentId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Parent'
     },
     resetPasswordToken: {
         type: String,
@@ -67,6 +64,7 @@ const UserSchema = new mongoose.Schema({
     }
 });
 
+// Hash password before saving
 UserSchema.pre('save', async function(next) {
     if (!this.isModified('password')) return next();
     try {
@@ -79,6 +77,7 @@ UserSchema.pre('save', async function(next) {
     }
 });
 
+// Compare password method
 UserSchema.methods.comparePassword = async function(password) {
     return await bcrypt.compare(password, this.password);
 };
