@@ -33,7 +33,7 @@ const {
     // Event management
     getEvents,
     createEvent,
-    updateEvent,   // ← Make sure this is here!
+    updateEvent,
     deleteEvent
 } = require('../controllers/adminController');
 
@@ -88,7 +88,7 @@ router.delete('/report-cards/:reportId', deleteReportCard);
 // ============================================
 router.get('/events', getEvents);
 router.post('/events', createEvent);
-router.put('/events/:eventId', updateEvent);   // ← Line 83
+router.put('/events/:eventId', updateEvent);
 router.delete('/events/:eventId', deleteEvent);
 
 module.exports = router;
