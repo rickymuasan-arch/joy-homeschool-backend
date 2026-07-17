@@ -215,7 +215,7 @@ exports.deleteRejectedAdmin = async (req, res) => {
 };
 
 // ============================================
-// PAYMENT MANAGEMENT (NO EMAILS)
+// PAYMENT MANAGEMENT
 // ============================================
 exports.getPayments = async (req, res) => {
     try {
@@ -404,6 +404,7 @@ exports.createEvent = async (req, res) => {
     }
 };
 
+// ✅ ADD THIS FUNCTION - IT WAS MISSING!
 exports.updateEvent = async (req, res) => {
     try {
         const event = await Event.findByIdAndUpdate(
