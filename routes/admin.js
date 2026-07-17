@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { authenticate, isAdmin, isSuperAdmin } = require('../middleware/auth');
 const {
+    // Dashboard
+    getStats,
+    
     // Parent management
     getParents,
     approveParent,
@@ -44,6 +47,11 @@ router.use(authenticate);
 router.use(isAdmin);
 
 // ============================================
+// DASHBOARD
+// ============================================
+router.get('/stats', getStats);
+
+// ============================================
 // PARENT MANAGEMENT
 // ============================================
 router.get('/parents', getParents);
@@ -64,7 +72,7 @@ router.delete('/admins/:adminId', isSuperAdmin, deleteAdmin);
 router.delete('/admins/:adminId/rejected', isSuperAdmin, deleteRejectedAdmin);
 
 // ============================================
-// USER MANAGEMENT
+// USER MANAGEMENT (Super Admin only)
 // ============================================
 router.put('/users/:userId/email', isSuperAdmin, changeUserEmail);
 
