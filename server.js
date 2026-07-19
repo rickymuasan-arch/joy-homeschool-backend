@@ -9,12 +9,15 @@ const app = express();
 // ============================================
 // MIDDLEWARE
 // ============================================
-app.use(cors());
+app.use(cors({
+    origin: ['https://joyhomeschool.co.ke', 'https://www.joyhomeschool.co.ke', 'http://localhost:5500', 'http://127.0.0.1:5500'],
+    credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ============================================
-// STATIC FILES - Serve uploaded files
+// STATIC FILES
 // ============================================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -42,11 +45,11 @@ app.get('/api/test', (req, res) => {
 });
 
 // ============================================
-// ERROR HANDLING MIDDLEWARE
+// ERROR HANDLING
 // ============================================
 app.use((err, req, res, next) => {
     console.error('Error:', err.message);
-    res.status(500).json({ 
+    res.status(500).json({
         message: 'Something went wrong!',
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
@@ -60,11 +63,23 @@ app.use((req, res) => {
 });
 
 // ============================================
-// DATABASE CONNECTION
+// DATABASE CONNECTION - FIXED TIMEOUT
 // ============================================
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/joyhomeschool')
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch(err => console.error('❌ MongoDB connection error:', err));
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/joyhomeschool';
+
+console.log('⏳ Connecting to MongoDB...');
+
+mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 60000,  // ✅ 60 seconds (was 10 seconds)
+    socketTimeoutMS: 60000,
+    connectTimeoutMS: 60000,
+    family: 4  // ✅ Force IPv4
+})
+.then(() => console.log('✅ Connected to MongoDB'))
+.catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.error('Please check your MONGODB_URI and network access.');
+});
 
 // ============================================
 // START SERVER
