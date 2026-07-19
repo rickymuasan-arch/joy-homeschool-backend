@@ -63,22 +63,39 @@ app.use((req, res) => {
 });
 
 // ============================================
-// DATABASE CONNECTION - FIXED TIMEOUT
+// ✅ DATABASE CONNECTION - FIXED
 // ============================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/joyhomeschool';
+// Use MONGO_URI from environment - NO fallback to localhost
+const MONGODB_URI = process.env.MONGO_URI;
 
-console.log('⏳ Connecting to MongoDB...');
+console.log('🔍 Checking MongoDB connection...');
 
+if (!MONGODB_URI) {
+    console.error('❌ ERROR: MONGO_URI environment variable is NOT set on Render!');
+    console.error('💡 Please add MONGO_URI to your Render environment variables.');
+    console.error('💡 It should be: mongodb+srv://rickymuasan_db_user:****@aviora.bqkwlzz.mongodb.net/joy_homeschool_portal?retryWrites=true&w=majority&appName=Aviora');
+    process.exit(1);
+}
+
+// Mask password for logging
+const maskedUri = MONGODB_URI.replace(/:[^:@]*@/, ':****@');
+console.log('📡 Using MongoDB URI:', maskedUri);
+
+// Connect to MongoDB Atlas
 mongoose.connect(MONGODB_URI, {
-    serverSelectionTimeoutMS: 60000,  // ✅ 60 seconds (was 10 seconds)
+    serverSelectionTimeoutMS: 60000,
     socketTimeoutMS: 60000,
     connectTimeoutMS: 60000,
-    family: 4  // ✅ Force IPv4
+    family: 4
 })
-.then(() => console.log('✅ Connected to MongoDB'))
+.then(() => console.log('✅ Connected to MongoDB Atlas successfully!'))
 .catch(err => {
     console.error('❌ MongoDB connection error:', err.message);
-    console.error('Please check your MONGODB_URI and network access.');
+    console.error('💡 Please check:');
+    console.error('   1. Your MONGO_URI is correct');
+    console.error('   2. Your MongoDB Atlas IP whitelist includes 0.0.0.0/0');
+    console.error('   3. Your MongoDB Atlas cluster is running');
+    process.exit(1);
 });
 
 // ============================================
@@ -88,4 +105,5 @@ const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📍 API Base URL: http://localhost:${PORT}/api`);
+    console.log(`🔗 Live URL: https://joy-homeschool-backend.onrender.com`);
 });
