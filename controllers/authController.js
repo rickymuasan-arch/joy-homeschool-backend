@@ -4,13 +4,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-// ============================================
-// REGISTER PARENT
-// ============================================
 exports.register = async (req, res) => {
     try {
-        console.log('📝 Register request received');
-
         const { parentName, parentEmail, parentPhone, parentPassword, studentName, studentDOB, curriculum, grade } = req.body;
 
         if (!parentName || !parentEmail || !parentPassword || !studentName) {
@@ -70,71 +65,43 @@ exports.register = async (req, res) => {
     }
 };
 
-// ============================================
-// LOGIN - COMPLETELY REWRITTEN
-// ============================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        console.log('🔐 Login attempt:', email);
 
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
-        // Find user
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         
         if (!user) {
-            console.log('❌ User not found');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        console.log('✅ User found:', user.email);
-        console.log('📌 Role:', user.role);
-        console.log('📌 isApproved:', user.isApproved);
-        console.log('📌 isRejected:', user.isRejected);
-        console.log('📌 isActive:', user.isActive);
-
-        // Check status
         if (user.isRejected) {
-            console.log('❌ User rejected');
             return res.status(403).json({ message: 'Your account has been rejected.' });
         }
 
         if (user.role === 'parent' && !user.isApproved) {
-            console.log('⏳ Parent not approved');
             return res.status(403).json({ message: 'Your account is pending approval.' });
         }
 
         if (!user.isActive) {
-            console.log('❌ Account inactive');
             return res.status(403).json({ message: 'Your account has been deactivated.' });
         }
 
-        // COMPARE PASSWORD - USING THE SAME BCRYPT
-        console.log('🔑 Comparing passwords...');
-        console.log('📌 Input password length:', password.length);
-        console.log('📌 Stored hash length:', user.password.length);
-        
-        // FIX: Use the compare method from the User model
-        const isMatch = await user.comparePassword(password);
-        console.log('📌 Password match result:', isMatch);
+        const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch) {
-            console.log('❌ Password mismatch');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Generate token
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '7d' }
         );
-
-        console.log('✅ Login successful!');
 
         res.json({
             token,
@@ -155,9 +122,6 @@ exports.login = async (req, res) => {
     }
 };
 
-// ============================================
-// FORGOT PASSWORD
-// ============================================
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
@@ -178,11 +142,7 @@ exports.forgotPassword = async (req, res) => {
         user.resetPasswordExpires = resetTokenExpiry;
         await user.save();
 
-        console.log(`🔑 Password reset token for ${email}: ${resetToken}`);
-
-        res.json({
-            message: 'Password reset link sent to your email.'
-        });
+        res.json({ message: 'Password reset link sent to your email.' });
 
     } catch (error) {
         console.error('Forgot password error:', error);
@@ -190,9 +150,6 @@ exports.forgotPassword = async (req, res) => {
     }
 };
 
-// ============================================
-// RESET PASSWORD
-// ============================================
 exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
