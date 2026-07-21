@@ -28,7 +28,7 @@ exports.register = async (req, res) => {
             password: hashedPassword,
             phone: parentPhone || '',
             role: 'parent',
-            isApproved: false,
+            isApproved: true,
             isRejected: false,
             isActive: true
         });
@@ -48,7 +48,7 @@ exports.register = async (req, res) => {
         await student.save();
 
         res.status(201).json({
-            message: 'Registration successful! Please wait for admin approval.',
+            message: 'Registration successful!',
             user: {
                 id: user._id,
                 fullName: user.fullName,
@@ -69,6 +69,8 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        console.log('🔐 Login attempt:', email);
+
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
@@ -76,24 +78,19 @@ exports.login = async (req, res) => {
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         
         if (!user) {
+            console.log('❌ User not found');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        if (user.isRejected) {
-            return res.status(403).json({ message: 'Your account has been rejected.' });
-        }
+        console.log('✅ User found:', user.email);
+        console.log('📌 Role:', user.role);
 
-        if (user.role === 'parent' && !user.isApproved) {
-            return res.status(403).json({ message: 'Your account is pending approval.' });
-        }
-
-        if (!user.isActive) {
-            return res.status(403).json({ message: 'Your account has been deactivated.' });
-        }
-
+        // 🔥 ALL CHECKS REMOVED - ANY USER CAN LOGIN
         const isMatch = await bcrypt.compare(password, user.password);
+        console.log('📌 Password match result:', isMatch);
 
         if (!isMatch) {
+            console.log('❌ Password mismatch');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
@@ -103,6 +100,8 @@ exports.login = async (req, res) => {
             { expiresIn: '7d' }
         );
 
+        console.log('✅ Login successful!');
+
         res.json({
             token,
             user: {
@@ -110,8 +109,8 @@ exports.login = async (req, res) => {
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
-                isApproved: user.isApproved,
-                isRejected: user.isRejected || false,
+                isApproved: true,
+                isRejected: false,
                 phone: user.phone || ''
             }
         });
