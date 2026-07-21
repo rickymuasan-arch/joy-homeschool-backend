@@ -12,7 +12,7 @@ exports.getStats = async (req, res) => {
     try {
         const parentCount = await User.countDocuments({ role: 'parent' });
         const studentCount = await Student.countDocuments();
-        const pendingCount = await User.countDocuments({ role: 'parent', isApproved: false });
+        const pendingCount = await User.countDocuments({ role: 'parent', isApproved: false, isRejected: false });
         const adminCount = await User.countDocuments({ role: { $in: ['admin', 'super_admin'] } });
 
         res.json({
@@ -52,6 +52,9 @@ exports.approveParent = async (req, res) => {
         }
 
         parent.isApproved = true;
+        parent.isRejected = false;
+        parent.rejectionReason = '';
+        parent.rejectedAt = null;
         await parent.save();
 
         console.log(`✅ Parent approved: ${parent.fullName} (${parent.email})`);
@@ -60,6 +63,73 @@ exports.approveParent = async (req, res) => {
     } catch (error) {
         console.error('Approve parent error:', error);
         res.status(500).json({ message: 'Error approving parent' });
+    }
+};
+
+// ============================================
+// ✅ REJECT PARENT - NEW FUNCTION
+// ============================================
+exports.rejectParent = async (req, res) => {
+    try {
+        const parent = await User.findById(req.params.id);
+        if (!parent) {
+            return res.status(404).json({ message: 'Parent not found' });
+        }
+
+        if (parent.role !== 'parent') {
+            return res.status(400).json({ message: 'User is not a parent' });
+        }
+
+        parent.isApproved = false;
+        parent.isRejected = true;
+        parent.rejectionReason = req.body.reason || 'Rejected by admin';
+        parent.rejectedAt = new Date();
+        await parent.save();
+
+        console.log(`❌ Parent rejected: ${parent.fullName} (${parent.email})`);
+
+        res.json({
+            message: 'Parent rejected successfully',
+            parent: {
+                id: parent._id,
+                fullName: parent.fullName,
+                email: parent.email,
+                isApproved: parent.isApproved,
+                isRejected: parent.isRejected,
+                rejectionReason: parent.rejectionReason
+            }
+        });
+    } catch (error) {
+        console.error('Reject parent error:', error);
+        res.status(500).json({ message: 'Error rejecting parent' });
+    }
+};
+
+// ============================================
+// ✅ DELETE PARENT - NEW FUNCTION
+// ============================================
+exports.deleteParent = async (req, res) => {
+    try {
+        const parent = await User.findById(req.params.parentId);
+        if (!parent) {
+            return res.status(404).json({ message: 'Parent not found' });
+        }
+
+        if (parent.role !== 'parent') {
+            return res.status(400).json({ message: 'User is not a parent' });
+        }
+
+        // Delete associated students
+        await Student.deleteMany({ parentId: parent._id });
+
+        // Delete parent
+        await User.findByIdAndDelete(req.params.parentId);
+        console.log(`🗑️ Parent deleted: ${parent.fullName} (${parent.email})`);
+
+        res.json({ message: 'Parent deleted successfully' });
+    } catch (error) {
+        console.error('Delete parent error:', error);
+        res.status(500).json({ message: 'Error deleting parent' });
     }
 };
 
@@ -74,7 +144,7 @@ exports.deleteRejectedParent = async (req, res) => {
             return res.status(400).json({ message: 'User is not a parent' });
         }
 
-        if (parent.isApproved) {
+        if (!parent.isRejected) {
             return res.status(400).json({ message: 'Only rejected parents can be deleted' });
         }
 
@@ -168,6 +238,9 @@ exports.createAdmin = async (req, res) => {
     }
 };
 
+// ============================================
+// ✅ DELETE ADMIN - KEEPS SUPER_ADMIN PROTECTED
+// ============================================
 exports.deleteAdmin = async (req, res) => {
     try {
         const admin = await User.findById(req.params.adminId);
@@ -175,6 +248,7 @@ exports.deleteAdmin = async (req, res) => {
             return res.status(404).json({ message: 'Admin not found' });
         }
 
+        // ✅ Prevent deleting super_admin
         if (admin.role === 'super_admin') {
             return res.status(403).json({ message: 'Cannot delete Super Admin' });
         }
@@ -184,6 +258,8 @@ exports.deleteAdmin = async (req, res) => {
         }
 
         await User.findByIdAndDelete(req.params.adminId);
+        console.log(`🗑️ Admin deleted: ${admin.fullName} (${admin.email})`);
+
         res.json({ message: 'Admin deleted successfully' });
     } catch (error) {
         console.error('Delete admin error:', error);
@@ -196,6 +272,10 @@ exports.deleteRejectedAdmin = async (req, res) => {
         const admin = await User.findById(req.params.adminId);
         if (!admin) {
             return res.status(404).json({ message: 'Admin not found' });
+        }
+
+        if (admin.role === 'super_admin') {
+            return res.status(403).json({ message: 'Cannot delete Super Admin' });
         }
 
         if (admin.role !== 'admin' && admin.role !== 'super_admin') {
@@ -215,7 +295,7 @@ exports.deleteRejectedAdmin = async (req, res) => {
 };
 
 // ============================================
-// USER MANAGEMENT - ✅ THIS WAS MISSING!
+// USER MANAGEMENT
 // ============================================
 exports.changeUserEmail = async (req, res) => {
     try {

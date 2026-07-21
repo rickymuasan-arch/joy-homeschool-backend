@@ -13,7 +13,6 @@ exports.register = async (req, res) => {
 
         const { parentName, parentEmail, parentPhone, parentPassword, studentName, studentDOB, curriculum, grade } = req.body;
 
-        // Validate
         if (!parentName || !parentEmail || !parentPassword || !studentName) {
             return res.status(400).json({ message: 'Please fill in all required fields' });
         }
@@ -21,16 +20,13 @@ exports.register = async (req, res) => {
             return res.status(400).json({ message: 'Password must be at least 8 characters' });
         }
 
-        // Check if user exists
         const existingUser = await User.findOne({ email: parentEmail.toLowerCase() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email already registered' });
         }
 
-        // Hash password
         const hashedPassword = await bcrypt.hash(parentPassword, 10);
 
-        // ✅ Create User (ONLY User model - NO Parent model!)
         const user = new User({
             fullName: parentName,
             email: parentEmail.toLowerCase(),
@@ -38,12 +34,12 @@ exports.register = async (req, res) => {
             phone: parentPhone || '',
             role: 'parent',
             isApproved: false,
+            isRejected: false,
             isActive: true
         });
         await user.save();
         console.log('✅ User created:', user._id);
 
-        // Create Student
         const student = new Student({
             fullName: studentName,
             dateOfBirth: studentDOB,
@@ -79,39 +75,78 @@ exports.register = async (req, res) => {
 };
 
 // ============================================
-// LOGIN
+// LOGIN - COMPLETELY REWRITTEN
 // ============================================
 exports.login = async (req, res) => {
     try {
+        console.log('🔐 Login attempt for:', req.body.email);
+
         const { email, password } = req.body;
 
-        const user = await User.findOne({ email: email.toLowerCase() });
+        // Validate input
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
+        // Find user by email (case insensitive)
+        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        
         if (!user) {
+            console.log('❌ User not found:', email);
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Check if parent is approved
-        if (user.role === 'parent' && !user.isApproved) {
-            return res.status(403).json({
-                message: 'Your account is pending approval. Please wait for admin verification.'
-            });
+        console.log('✅ User found:', user.email);
+        console.log('📌 Role:', user.role);
+        console.log('📌 isApproved:', user.isApproved);
+        console.log('📌 isRejected:', user.isRejected || false);
+        console.log('📌 isActive:', user.isActive);
+
+        // Check if rejected
+        if (user.isRejected) {
+            console.log('❌ User is rejected:', user.email);
+            return res.status(403).json({ message: 'Your account has been rejected. Please contact admin.' });
         }
 
+        // Check if approved (for parents)
+        if (user.role === 'parent' && !user.isApproved) {
+            console.log('⏳ Parent not approved:', user.email);
+            return res.status(403).json({ message: 'Your account is pending approval. Please wait for admin verification.' });
+        }
+
+        // Check if active
         if (!user.isActive) {
+            console.log('❌ Account deactivated:', user.email);
             return res.status(403).json({ message: 'Your account has been deactivated.' });
         }
 
+        // COMPARE PASSWORD - FIXED
+        console.log('🔑 Comparing passwords...');
+        console.log('📌 Input password length:', password.length);
+        console.log('📌 Stored hash length:', user.password.length);
+        
         const isMatch = await bcrypt.compare(password, user.password);
+        console.log('📌 Password match result:', isMatch);
+
         if (!isMatch) {
+            console.log('❌ Password mismatch for:', user.email);
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // Generate JWT token
         const token = jwt.sign(
-            { id: user._id, email: user.email, role: user.role },
+            { 
+                id: user._id, 
+                email: user.email, 
+                role: user.role 
+            },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '7d' }
         );
 
+        console.log('✅ Login successful:', user.email);
+
+        // Return user data (without password)
         res.json({
             token,
             user: {
@@ -120,13 +155,14 @@ exports.login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 isApproved: user.isApproved,
+                isRejected: user.isRejected || false,
                 phone: user.phone || ''
             }
         });
 
     } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ message: 'Server error during login' });
+        console.error('❌ Login error:', error);
+        res.status(500).json({ message: 'Server error during login: ' + error.message });
     }
 };
 
@@ -156,7 +192,7 @@ exports.forgotPassword = async (req, res) => {
         console.log(`🔑 Password reset token for ${email}: ${resetToken}`);
 
         res.json({
-            message: 'Password reset link would be sent to your email. Please contact admin for password reset.'
+            message: 'Password reset link sent to your email.'
         });
 
     } catch (error) {

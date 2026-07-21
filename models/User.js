@@ -30,6 +30,20 @@ const UserSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // ✅ NEW FIELDS - ADD THESE
+    isRejected: {
+        type: Boolean,
+        default: false
+    },
+    rejectionReason: {
+        type: String,
+        default: ''
+    },
+    rejectedAt: {
+        type: Date,
+        default: null
+    },
+    // ✅ END NEW FIELDS
     isActive: {
         type: Boolean,
         default: true

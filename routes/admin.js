@@ -8,6 +8,8 @@ const {
     // Parent management
     getParents,
     approveParent,
+    rejectParent,        // ✅ ADDED
+    deleteParent,        // ✅ ADDED
     deleteRejectedParent,
     
     // Student management
@@ -52,10 +54,12 @@ router.use(isAdmin);
 router.get('/stats', getStats);
 
 // ============================================
-// PARENT MANAGEMENT
+// PARENT MANAGEMENT - ✅ UPDATED
 // ============================================
 router.get('/parents', getParents);
 router.put('/parents/:id/approve', isSuperAdmin, approveParent);
+router.put('/parents/:id/reject', isSuperAdmin, rejectParent);  // ✅ ADDED
+router.delete('/parents/:parentId', isSuperAdmin, deleteParent);  // ✅ ADDED
 router.delete('/parents/:parentId/rejected', isSuperAdmin, deleteRejectedParent);
 
 // ============================================
