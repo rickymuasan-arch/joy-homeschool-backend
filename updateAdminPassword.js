@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const User = require('./models/User');
+const Admin = require('./models/Admin');  // ✅ Changed from User to Admin
 require('dotenv').config();
 
 async function updateAdminPassword() {
@@ -12,10 +12,12 @@ async function updateAdminPassword() {
         const adminPassword = 'Directormichael@2026';
 
         // Find the admin
-        const admin = await User.findOne({ email: adminEmail });
+        const admin = await Admin.findOne({ email: adminEmail });  // ✅ Changed from User to Admin
 
         if (!admin) {
             console.log('❌ Admin not found!');
+            console.log('💡 Make sure you have an admin in the Admin collection');
+            await mongoose.disconnect();
             return;
         }
 
@@ -35,7 +37,7 @@ async function updateAdminPassword() {
         await mongoose.disconnect();
         console.log('Disconnected from MongoDB');
     } catch (error) {
-        console.error('Error:', error);
+        console.error('❌ Error:', error.message);
         await mongoose.disconnect();
     }
 }

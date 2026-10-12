@@ -4,6 +4,9 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
+// ============================================
+// REGISTER
+// ============================================
 exports.register = async (req, res) => {
     try {
         const { parentName, parentEmail, parentPhone, parentPassword, studentName, studentDOB, curriculum, grade } = req.body;
@@ -28,7 +31,7 @@ exports.register = async (req, res) => {
             password: hashedPassword,
             phone: parentPhone || '',
             role: 'parent',
-            isApproved: true,
+            isApproved: false,
             isRejected: false,
             isActive: true
         });
@@ -48,13 +51,14 @@ exports.register = async (req, res) => {
         await student.save();
 
         res.status(201).json({
-            message: 'Registration successful!',
+            message: 'Registration successful! Please wait for admin approval.',
             user: {
                 id: user._id,
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
-                isApproved: user.isApproved
+                isApproved: user.isApproved,
+                isRejected: user.isRejected
             },
             studentId: student._id
         });
@@ -65,43 +69,76 @@ exports.register = async (req, res) => {
     }
 };
 
+// ============================================
+// ✅ FIXED LOGIN - NO MORE INVALID CREDENTIALS
+// ============================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        console.log('🔐 Login attempt:', email);
+        console.log('========================================');
+        console.log('🔐 LOGIN ATTEMPT:', email);
+        console.log('========================================');
 
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
+        // Find user
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         
         if (!user) {
-            console.log('❌ User not found');
+            console.log('❌ User NOT found');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        console.log('✅ User found:', user.email);
-        console.log('📌 Role:', user.role);
+        console.log('✅ User FOUND!');
+        console.log('📧 Email:', user.email);
+        console.log('👤 Name:', user.fullName);
+        console.log('🔑 Role:', user.role);
+        console.log('✅ isApproved (DB):', user.isApproved);
+        console.log('❌ isRejected (DB):', user.isRejected || false);
 
-        // 🔥 ALL CHECKS REMOVED - ANY USER CAN LOGIN
+        // Check password
         const isMatch = await bcrypt.compare(password, user.password);
-        console.log('📌 Password match result:', isMatch);
+        console.log('📌 Password match:', isMatch ? '✅ YES' : '❌ NO');
 
         if (!isMatch) {
             console.log('❌ Password mismatch');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // ✅ CHECK: Is parent rejected?
+        if (user.role === 'parent' && user.isRejected === true) {
+            console.log('❌ User is REJECTED');
+            return res.status(403).json({ 
+                message: 'Your account has been rejected. Please contact admin.',
+                isRejected: true,
+                isApproved: false
+            });
+        }
+
+        // ✅ CHECK: Is parent approved?
+        if (user.role === 'parent' && !user.isApproved) {
+            console.log('⏳ User is PENDING approval');
+            return res.status(403).json({ 
+                message: 'Your account is pending approval. Please wait for admin verification.',
+                isApproved: false,
+                isRejected: false
+            });
+        }
+
+        // Generate token
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
-            process.env.JWT_SECRET || 'your-secret-key',
+            process.env.JWT_SECRET || 'aviora_secret_key',
             { expiresIn: '7d' }
         );
 
-        console.log('✅ Login successful!');
+        console.log('✅ LOGIN SUCCESSFUL!');
+        console.log('========================================');
 
+        // ✅ FIX: Send ACTUAL database values
         res.json({
             token,
             user: {
@@ -109,8 +146,8 @@ exports.login = async (req, res) => {
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
-                isApproved: true,
-                isRejected: false,
+                isApproved: user.isApproved,          // ✅ FROM DATABASE
+                isRejected: user.isRejected || false, // ✅ FROM DATABASE
                 phone: user.phone || ''
             }
         });
@@ -121,6 +158,9 @@ exports.login = async (req, res) => {
     }
 };
 
+// ============================================
+// FORGOT PASSWORD
+// ============================================
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
@@ -141,6 +181,8 @@ exports.forgotPassword = async (req, res) => {
         user.resetPasswordExpires = resetTokenExpiry;
         await user.save();
 
+        console.log('🔑 Password reset token for', email, ':', resetToken);
+
         res.json({ message: 'Password reset link sent to your email.' });
 
     } catch (error) {
@@ -149,6 +191,9 @@ exports.forgotPassword = async (req, res) => {
     }
 };
 
+// ============================================
+// RESET PASSWORD
+// ============================================
 exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
