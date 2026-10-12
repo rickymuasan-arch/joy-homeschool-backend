@@ -80,7 +80,7 @@ app.use('/api/parents', parentRoutes);
 // ============================================
 // MONGODB CONNECTION
 // ============================================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://rickymuasan_db_user:4gf7ehcXx@aviora.bqkwlzz.mongodb.net/joy_homeschool_portal?retryWrites=true&w=majority&appName=Aviora';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // ===== CREATE FIRST ADMIN =====
 const createFirstAdmin = async () => {
