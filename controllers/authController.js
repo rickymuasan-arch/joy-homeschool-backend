@@ -3,6 +3,7 @@ const Student = require('../models/Student');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 // ============================================
 // REGISTER
@@ -64,81 +65,67 @@ exports.register = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Register error:', error);
-        res.status(500).json({ message: 'Server error during registration: ' + error.message });
+        console.error('Register error:', error);
+        res.status(500).json({ message: 'Server error: ' + error.message });
     }
 };
 
 // ============================================
-// ✅ FIXED LOGIN - NO MORE INVALID CREDENTIALS
+// LOGIN
 // ============================================
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
         console.log('========================================');
-        console.log('🔐 LOGIN ATTEMPT:', email);
+        console.log('LOGIN ATTEMPT:', email);
         console.log('========================================');
 
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
-        // Find user
         const user = await User.findOne({ email: email.toLowerCase().trim() });
-        
+
         if (!user) {
-            console.log('❌ User NOT found');
+            console.log('User NOT found');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        console.log('✅ User FOUND!');
-        console.log('📧 Email:', user.email);
-        console.log('👤 Name:', user.fullName);
-        console.log('🔑 Role:', user.role);
-        console.log('✅ isApproved (DB):', user.isApproved);
-        console.log('❌ isRejected (DB):', user.isRejected || false);
+        console.log('User FOUND:', user.email, '| Role:', user.role);
 
-        // Check password
         const isMatch = await bcrypt.compare(password, user.password);
-        console.log('📌 Password match:', isMatch ? '✅ YES' : '❌ NO');
+        console.log('Password match:', isMatch ? 'YES' : 'NO');
 
         if (!isMatch) {
-            console.log('❌ Password mismatch');
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // ✅ CHECK: Is parent rejected?
         if (user.role === 'parent' && user.isRejected === true) {
-            console.log('❌ User is REJECTED');
-            return res.status(403).json({ 
+            return res.status(403).json({
                 message: 'Your account has been rejected. Please contact admin.',
                 isRejected: true,
                 isApproved: false
             });
         }
 
-        // ✅ CHECK: Is parent approved?
         if (user.role === 'parent' && !user.isApproved) {
-            console.log('⏳ User is PENDING approval');
-            return res.status(403).json({ 
+            return res.status(403).json({
                 message: 'Your account is pending approval. Please wait for admin verification.',
                 isApproved: false,
                 isRejected: false
             });
         }
 
-        // Generate token
         const token = jwt.sign(
             { id: user._id, email: user.email, role: user.role },
             process.env.JWT_SECRET || 'aviora_secret_key',
             { expiresIn: '7d' }
         );
 
-        console.log('✅ LOGIN SUCCESSFUL!');
+        console.log('LOGIN SUCCESSFUL!');
         console.log('========================================');
 
-        // ✅ FIX: Send ACTUAL database values
         res.json({
             token,
             user: {
@@ -146,14 +133,14 @@ exports.login = async (req, res) => {
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
-                isApproved: user.isApproved,          // ✅ FROM DATABASE
-                isRejected: user.isRejected || false, // ✅ FROM DATABASE
+                isApproved: user.isApproved,
+                isRejected: user.isRejected || false,
                 phone: user.phone || ''
             }
         });
 
     } catch (error) {
-        console.error('❌ Login error:', error);
+        console.error('Login error:', error);
         res.status(500).json({ message: 'Server error: ' + error.message });
     }
 };
@@ -181,10 +168,7 @@ exports.forgotPassword = async (req, res) => {
         user.resetPasswordExpires = resetTokenExpiry;
         await user.save();
 
-        console.log('🔑 Password reset token for', email, ':', resetToken);
-
-        // ✅ SEND THE EMAIL
-        const nodemailer = require('nodemailer');
+        console.log('Password reset token for', email, ':', resetToken);
 
         const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -217,17 +201,17 @@ exports.forgotPassword = async (req, res) => {
                     <p style="color: #666; font-size: 0.85rem; word-break: break-all;">${resetUrl}</p>
                     <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
                     <p style="color: #999; font-size: 0.85rem;">If you didn't request this, ignore this email.</p>
-                    <p style="color: #999; font-size: 0.85rem;">— Joy Homeschool &amp; Tuition Centre</p>
+                    <p style="color: #999; font-size: 0.85rem;">— Joy Homeschool & Tuition Centre</p>
                 </div>
             `
         };
 
         try {
             await transporter.sendMail(mailOptions);
-            console.log('✅ Email sent to:', user.email);
+            console.log('Email sent to:', user.email);
             res.json({ message: 'Password reset link sent to your email.' });
         } catch (emailError) {
-            console.error('❌ Email send failed:', emailError.message);
+            console.error('Email send failed:', emailError.message);
             res.status(500).json({
                 message: 'Could not send email. Please contact admin.',
                 error: emailError.message
@@ -270,7 +254,7 @@ exports.resetPassword = async (req, res) => {
         user.resetPasswordExpires = null;
         await user.save();
 
-        console.log('✅ Password reset successful for:', user.email);
+        console.log('Password reset successful for:', user.email);
         res.json({ message: 'Password reset successfully' });
 
     } catch (error) {
