@@ -118,19 +118,20 @@ router.get('/report-cards', async (req, res) => {
 });
 
 // ============================================
-// DOWNLOAD REPORT CARD
+// DOWNLOAD REPORT CARD (Branded PDF)
 // ============================================
-router.get('/report-cards/:reportId/download', authenticate, async (req, res) => {
+router.get('/report-cards/:reportId/download', async (req, res) => {
     try {
-        const ReportCard = require('../models/ReportCard');
-        
+        const PDFDocument = require('pdfkit');
+        const path = require('path');
+        const fs = require('fs');
+
         const report = await ReportCard.findById(req.params.reportId);
-        
+
         if (!report) {
             return res.status(404).json({ message: 'Report card not found' });
         }
 
-        // Verify parent owns this report
         if (report.parentId.toString() !== req.user._id.toString()) {
             return res.status(403).json({ message: 'Access denied' });
         }
@@ -139,12 +140,108 @@ router.get('/report-cards/:reportId/download', authenticate, async (req, res) =>
             return res.status(404).json({ message: 'No file available' });
         }
 
-        const buffer = Buffer.from(report.fileData, 'base64');
-        
-        res.setHeader('Content-Type', report.fileType || 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="report-${report._id}.${report.fileType?.includes('pdf') ? 'pdf' : 'jpg'}"`);
-        res.send(buffer);
-        
+        const doc = new PDFDocument({ size: 'A4', margin: 40 });
+
+        const chunks = [];
+        doc.on('data', chunk => chunks.push(chunk));
+        doc.on('end', () => {
+            const pdfBuffer = Buffer.concat(chunks);
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="Report-Card-${report.studentName}-${report.term}.pdf"`);
+            res.send(pdfBuffer);
+        });
+
+        // === HEADER ===
+        const logoPath = path.join(__dirname, '..', 'public', 'logo.png');
+        if (fs.existsSync(logoPath)) {
+            doc.image(logoPath, 40, 30, { width: 70 });
+        }
+
+        doc.fillColor('#0B1A4A')
+           .fontSize(24)
+           .font('Helvetica-Bold')
+           .text('Joy Homeschool', 130, 40);
+
+        doc.fillColor('#E31B23')
+           .fontSize(11)
+           .font('Helvetica')
+           .text('& Tuition Centre', 130, 68);
+
+        doc.fillColor('#4A5568')
+           .fontSize(9)
+           .text('+254 710 692 228  |  info@joyhomeschool.co.ke  |  www.joyhomeschool.co.ke', 130, 85);
+
+        doc.moveTo(40, 105).lineTo(555, 105).strokeColor('#E31B23').lineWidth(2).stroke();
+
+        // === TITLE ===
+        doc.fillColor('#0B1A4A')
+           .fontSize(16)
+           .font('Helvetica-Bold')
+           .text('STUDENT REPORT CARD', 40, 125, { align: 'center' });
+
+        // === STUDENT INFO ===
+        let y = 165;
+        const leftCol = 50;
+        const rightCol = 300;
+
+        doc.fillColor('#2D3748').fontSize(11).font('Helvetica-Bold').text('Student Name:', leftCol, y);
+        doc.fillColor('#4A5568').font('Helvetica').text(report.studentName || 'N/A', leftCol + 100, y);
+
+        doc.fillColor('#2D3748').font('Helvetica-Bold').text('Term:', rightCol, y);
+        doc.fillColor('#4A5568').font('Helvetica').text(report.term || 'N/A', rightCol + 60, y);
+
+        y += 22;
+        doc.fillColor('#2D3748').font('Helvetica-Bold').text('Academic Year:', leftCol, y);
+        doc.fillColor('#4A5568').font('Helvetica').text(report.year?.toString() || 'N/A', leftCol + 100, y);
+
+        doc.fillColor('#2D3748').font('Helvetica-Bold').text('Class Teacher:', rightCol, y);
+        doc.fillColor('#4A5568').font('Helvetica').text(report.classTeacher || 'N/A', rightCol + 85, y);
+
+        y += 22;
+        doc.fillColor('#2D3748').font('Helvetica-Bold').text('Overall Grade:', leftCol, y);
+        doc.fillColor('#E31B23').font('Helvetica-Bold').text(report.overallGrade || 'N/A', leftCol + 100, y);
+
+        y += 30;
+
+        doc.moveTo(40, y).lineTo(555, y).strokeColor('#E5E7EB').lineWidth(1).stroke();
+        y += 15;
+
+        // === TEACHER REMARKS ===
+        doc.fillColor('#2D3748').fontSize(12).font('Helvetica-Bold').text('Teacher Remarks:', 40, y);
+        y += 20;
+        doc.fillColor('#4A5568').fontSize(10).font('Helvetica')
+           .text(report.teacherRemarks || 'No remarks provided.', 50, y, { width: 500, align: 'left' });
+
+        y += 60;
+
+        // === REPORT IMAGE ===
+        if (report.fileType && report.fileType.startsWith('image/')) {
+            try {
+                const imageBuffer = Buffer.from(report.fileData, 'base64');
+                doc.image(imageBuffer, 40, y, { fit: [515, 400], align: 'center' });
+            } catch (imgErr) {
+                console.error('Image render error:', imgErr);
+                doc.fillColor('#E31B23').fontSize(10).text('[Unable to embed report image]', 40, y);
+            }
+        } else if (report.fileType === 'application/pdf') {
+            doc.fillColor('#4A5568').fontSize(10).text('[Original PDF attached separately]', 40, y);
+        }
+
+        // === FOOTER ===
+        const footerY = 780;
+        doc.moveTo(40, footerY).lineTo(555, footerY).strokeColor('#E5E7EB').lineWidth(1).stroke();
+
+        doc.fillColor('#4A5568').fontSize(9).font('Helvetica')
+           .text('This is a computer-generated report card.', 40, footerY + 8, { align: 'left' });
+
+        doc.fillColor('#4A5568').fontSize(9)
+           .text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, 40, footerY + 8, { align: 'right', width: 515 });
+
+        doc.fillColor('#E31B23').fontSize(9).font('Helvetica-Bold')
+           .text('Joy Homeschool & Tuition Centre', 40, footerY + 25, { align: 'center', width: 515 });
+
+        doc.end();
+
     } catch (err) {
         console.error('Download error:', err);
         res.status(500).json({ message: 'Error downloading report card' });
