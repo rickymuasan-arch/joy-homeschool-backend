@@ -118,6 +118,40 @@ router.get('/report-cards', async (req, res) => {
 });
 
 // ============================================
+// DOWNLOAD REPORT CARD
+// ============================================
+router.get('/report-cards/:reportId/download', authenticate, async (req, res) => {
+    try {
+        const ReportCard = require('../models/ReportCard');
+        
+        const report = await ReportCard.findById(req.params.reportId);
+        
+        if (!report) {
+            return res.status(404).json({ message: 'Report card not found' });
+        }
+
+        // Verify parent owns this report
+        if (report.parentId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        if (!report.fileData) {
+            return res.status(404).json({ message: 'No file available' });
+        }
+
+        const buffer = Buffer.from(report.fileData, 'base64');
+        
+        res.setHeader('Content-Type', report.fileType || 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="report-${report._id}.${report.fileType?.includes('pdf') ? 'pdf' : 'jpg'}"`);
+        res.send(buffer);
+        
+    } catch (err) {
+        console.error('Download error:', err);
+        res.status(500).json({ message: 'Error downloading report card' });
+    }
+});
+
+// ============================================
 // GET PAYMENTS FOR CHILD
 // ============================================
 router.get('/child-payments/:studentId', async (req, res) => {
