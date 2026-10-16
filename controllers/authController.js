@@ -191,20 +191,27 @@ exports.forgotPassword = async (req, res) => {
         `;
 
         try {
-            const brevo = require('@getbrevo/brevo');
-const apiInstance = new brevo.TransactionalEmailsApi();
-apiInstance.setApiKey(
-    brevo.TransactionalEmailsApiApiKeys.apiKey,
-    process.env.BREVO_API_KEY
-);
+            const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': process.env.BREVO_API_KEY,
+                    'content-type': 'application/json'
+                },
+                body: JSON.stringify({
+                    sender: { name: 'Joy Homeschool', email: 'rickymuasan@gmail.com' },
+                    to: [{ email: user.email, name: user.fullName }],
+                    subject: 'Password Reset - Joy Homeschool',
+                    htmlContent: htmlContent
+                })
+            });
 
-const sendSmtpEmail = new brevo.SendSmtpEmail();
-            sendSmtpEmail.subject = 'Password Reset - Joy Homeschool';
-            sendSmtpEmail.htmlContent = htmlContent;
-            sendSmtpEmail.sender = { name: 'Joy Homeschool', email: 'rickymuasan@gmail.com' };
-            sendSmtpEmail.to = [{ email: user.email, name: user.fullName }];
+            const result = await response.json();
 
-            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            if (!response.ok) {
+                throw new Error(result.message || JSON.stringify(result));
+            }
+
             console.log('✅ Email sent via Brevo API to:', user.email);
             res.json({ message: 'Password reset link sent to your email.' });
         } catch (emailError) {
