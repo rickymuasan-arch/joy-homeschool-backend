@@ -3,7 +3,6 @@ const Student = require('../models/Student');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 
 // ============================================
 // REGISTER
@@ -170,51 +169,46 @@ exports.forgotPassword = async (req, res) => {
 
         console.log('Password reset token for', email, ':', resetToken);
 
-     const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000
-});
-
         const resetUrl = `${process.env.FRONTEND_URL || 'https://joyhomeschool.co.ke'}/#reset-password?token=${resetToken}`;
 
-        const mailOptions = {
-            from: `"Joy Homeschool" <${process.env.SMTP_USER}>`,
-            to: user.email,
-            subject: 'Password Reset - Joy Homeschool',
-            html: `
-                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #E31B23;">Password Reset Request</h2>
-                    <p>Hello ${user.fullName},</p>
-                    <p>You requested to reset your password for Joy Homeschool Portal.</p>
-                    <p>Click the link below to reset your password. This link expires in 1 hour.</p>
-                    <p style="text-align: center; margin: 30px 0;">
-                        <a href="${resetUrl}" style="background: #E31B23; color: white; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                            Reset Password
-                        </a>
-                    </p>
-                    <p style="color: #666; font-size: 0.9rem;">If the button doesn't work, copy this link:</p>
-                    <p style="color: #666; font-size: 0.85rem; word-break: break-all;">${resetUrl}</p>
-                    <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-                    <p style="color: #999; font-size: 0.85rem;">If you didn't request this, ignore this email.</p>
-                    <p style="color: #999; font-size: 0.85rem;">— Joy Homeschool & Tuition Centre</p>
-                </div>
-            `
-        };
+        const htmlContent = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #E31B23;">Password Reset Request</h2>
+                <p>Hello ${user.fullName},</p>
+                <p>You requested to reset your password for Joy Homeschool Portal.</p>
+                <p>Click the link below to reset your password. This link expires in 1 hour.</p>
+                <p style="text-align: center; margin: 30px 0;">
+                    <a href="${resetUrl}" style="background: #E31B23; color: white; padding: 14px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                        Reset Password
+                    </a>
+                </p>
+                <p style="color: #666; font-size: 0.9rem;">If the button doesn't work, copy this link:</p>
+                <p style="color: #666; font-size: 0.85rem; word-break: break-all;">${resetUrl}</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="color: #999; font-size: 0.85rem;">If you didn't request this, ignore this email.</p>
+                <p style="color: #999; font-size: 0.85rem;">— Joy Homeschool & Tuition Centre</p>
+            </div>
+        `;
 
         try {
-            await transporter.sendMail(mailOptions);
-            console.log('Email sent to:', user.email);
+            const SibApiV3Sdk = require('@getbrevo/brevo');
+            const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+            apiInstance.setApiKey(
+                SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
+                process.env.BREVO_API_KEY
+            );
+
+            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+            sendSmtpEmail.subject = 'Password Reset - Joy Homeschool';
+            sendSmtpEmail.htmlContent = htmlContent;
+            sendSmtpEmail.sender = { name: 'Joy Homeschool', email: 'rickymuasan@gmail.com' };
+            sendSmtpEmail.to = [{ email: user.email, name: user.fullName }];
+
+            await apiInstance.sendTransacEmail(sendSmtpEmail);
+            console.log('✅ Email sent via Brevo API to:', user.email);
             res.json({ message: 'Password reset link sent to your email.' });
         } catch (emailError) {
-            console.error('Email send failed:', emailError.message);
+            console.error('❌ Email send failed:', emailError.message);
             res.status(500).json({
                 message: 'Could not send email. Please contact admin.',
                 error: emailError.message
