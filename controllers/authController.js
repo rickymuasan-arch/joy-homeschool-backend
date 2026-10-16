@@ -191,14 +191,14 @@ exports.forgotPassword = async (req, res) => {
         `;
 
         try {
-            const SibApiV3Sdk = require('@getbrevo/brevo');
-            const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-            apiInstance.setApiKey(
-                SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey,
-                process.env.BREVO_API_KEY
-            );
+            const brevo = require('@getbrevo/brevo');
+const apiInstance = new brevo.TransactionalEmailsApi();
+apiInstance.setApiKey(
+    brevo.TransactionalEmailsApiApiKeys.apiKey,
+    process.env.BREVO_API_KEY
+);
 
-            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+const sendSmtpEmail = new brevo.SendSmtpEmail();
             sendSmtpEmail.subject = 'Password Reset - Joy Homeschool';
             sendSmtpEmail.htmlContent = htmlContent;
             sendSmtpEmail.sender = { name: 'Joy Homeschool', email: 'rickymuasan@gmail.com' };
