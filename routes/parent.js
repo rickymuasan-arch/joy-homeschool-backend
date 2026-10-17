@@ -267,7 +267,9 @@ router.get('/events', async (req, res) => {
             startDate: { $gte: new Date() },
             $or: [
                 { curriculum: 'All' },
-                { curriculum: { $in: uniqueCurricula } }
+                { curriculum: { $in: uniqueCurricula } },
+                { curriculum: { $exists: false } },
+                { curriculum: null }
             ]
         }).sort({ startDate: 1 });
 
