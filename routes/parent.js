@@ -264,7 +264,6 @@ router.get('/events', async (req, res) => {
 
         const events = await Event.find({
             isActive: true,
-            startDate: { $gte: new Date() },
             $or: [
                 { curriculum: 'All' },
                 { curriculum: { $in: uniqueCurricula } },
