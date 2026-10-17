@@ -8,8 +8,8 @@ const {
     // Parent management
     getParents,
     approveParent,
-    rejectParent,        // ✅ ADDED
-    deleteParent,        // ✅ ADDED
+    rejectParent,
+    deleteParent,
     deleteRejectedParent,
     
     // Student management
@@ -42,6 +42,10 @@ const {
     deleteEvent
 } = require('../controllers/adminController');
 
+const Diary = require('../models/Diary');
+const Timetable = require('../models/Timetable');
+const Student = require('../models/Student');
+
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
 // ============================================
@@ -54,12 +58,12 @@ router.use(isAdmin);
 router.get('/stats', getStats);
 
 // ============================================
-// PARENT MANAGEMENT - ✅ UPDATED
+// PARENT MANAGEMENT
 // ============================================
 router.get('/parents', getParents);
 router.put('/parents/:id/approve', isSuperAdmin, approveParent);
-router.put('/parents/:id/reject', isSuperAdmin, rejectParent);  // ✅ ADDED
-router.delete('/parents/:parentId', isSuperAdmin, deleteParent);  // ✅ ADDED
+router.put('/parents/:id/reject', isSuperAdmin, rejectParent);
+router.delete('/parents/:parentId', isSuperAdmin, deleteParent);
 router.delete('/parents/:parentId/rejected', isSuperAdmin, deleteRejectedParent);
 
 // ============================================
@@ -102,5 +106,63 @@ router.get('/events', getEvents);
 router.post('/events', createEvent);
 router.put('/events/:eventId', updateEvent);
 router.delete('/events/:eventId', deleteEvent);
+
+// ============================================
+// DIARY MANAGEMENT (ADMINS & SUPER ADMINS)
+// ============================================
+router.post('/diary', async (req, res) => {
+    try {
+        const { studentId, title, content } = req.body;
+        const student = await Student.findById(studentId);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const newDiary = new Diary({
+            studentId,
+            studentName: student.fullName,
+            parentId: student.parentId,
+            title,
+            content,
+            writtenBy: req.user._id,
+            authorName: req.user.fullName
+        });
+        await newDiary.save();
+        res.status(201).json({ message: 'Diary entry added', diary: newDiary });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ============================================
+// TIMETABLE MANAGEMENT (SUPER ADMIN ONLY)
+// ============================================
+router.post('/timetable', isSuperAdmin, async (req, res) => {
+    try {
+        const { curriculum, grade, day, timeSlots, term, year } = req.body;
+        
+        const newTimetable = new Timetable({
+            curriculum, 
+            grade, 
+            day, 
+            timeSlots, 
+            term, 
+            year, 
+            createdBy: req.user._id
+        });
+        
+        await newTimetable.save();
+        res.status(201).json({ message: 'Timetable created', timetable: newTimetable });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+router.delete('/timetable/:id', isSuperAdmin, async (req, res) => {
+    try {
+        await Timetable.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Timetable deleted' });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
 
 module.exports = router;

@@ -5,6 +5,9 @@ const Student = require('../models/Student');
 const ReportCard = require('../models/ReportCard');
 const Payment = require('../models/Payment');
 const Event = require('../models/Event');
+const User = require('../models/User');
+const Diary = require('../models/Diary');
+const Timetable = require('../models/Timetable');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -83,7 +86,6 @@ router.get('/child-reports/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
 
-        // Verify student belongs to this parent
         const student = await Student.findOne({ _id: studentId, parentId: req.user._id });
         if (!student) {
             return res.status(403).json({ message: 'Access denied' });
@@ -223,8 +225,6 @@ router.get('/report-cards/:reportId/download', async (req, res) => {
                 console.error('Image render error:', imgErr);
                 doc.fillColor('#E31B23').fontSize(10).text('[Unable to embed report image]', 40, y);
             }
-        } else if (report.fileType === 'application/pdf') {
-            doc.fillColor('#4A5568').fontSize(10).text('[Original PDF attached separately]', 40, y);
         }
 
         // === FOOTER ===
@@ -255,7 +255,6 @@ router.get('/child-payments/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
 
-        // Verify student belongs to this parent
         const student = await Student.findOne({ _id: studentId, parentId: req.user._id });
         if (!student) {
             return res.status(403).json({ message: 'Access denied' });
@@ -280,7 +279,6 @@ router.post('/submit-payment', async (req, res) => {
     try {
         const { childId, amount, term, method, reference } = req.body;
 
-        // Validate
         if (!childId) {
             return res.status(400).json({ message: 'Child ID is required' });
         }
@@ -297,13 +295,11 @@ router.post('/submit-payment', async (req, res) => {
             return res.status(400).json({ message: 'Please enter a valid payment reference (min 3 characters)' });
         }
 
-        // Verify child belongs to this parent
         const student = await Student.findOne({ _id: childId, parentId: req.user._id });
         if (!student) {
             return res.status(403).json({ message: 'This child does not belong to you' });
         }
 
-        // Create payment record
         const payment = new Payment({
             studentId: childId,
             parentId: req.user._id,
@@ -356,7 +352,7 @@ router.get('/payment-history', async (req, res) => {
 });
 
 // ============================================
-// DOWNLOAD REPORT CARD
+// DOWNLOAD REPORT CARD (LEGACY)
 // ============================================
 router.get('/download-report/:reportId', async (req, res) => {
     try {
@@ -365,7 +361,6 @@ router.get('/download-report/:reportId', async (req, res) => {
             return res.status(404).json({ message: 'Report not found' });
         }
 
-        // Verify the student belongs to this parent
         const student = await Student.findOne({ 
             _id: report.studentId, 
             parentId: req.user._id 
@@ -374,7 +369,6 @@ router.get('/download-report/:reportId', async (req, res) => {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        // Return the file data
         res.json({
             fileUrl: report.fileUrl,
             fileName: report.fileName || 'report-card.pdf',
@@ -390,31 +384,46 @@ router.get('/download-report/:reportId', async (req, res) => {
 });
 
 // ============================================
-// GET EVENTS (FILTERED BY PARENT'S CHILDREN CURRICULUM)
+// GET EVENTS
 // ============================================
 router.get('/events', async (req, res) => {
     try {
-        // Get parent's children
-        const children = await Student.find({ parentId: req.user._id });
+        console.log("🚀 Fetching events for parent:", req.user.email);
         
-        // Get unique curricula from children
-        const curricula = children.map(child => child.curriculum);
-        const uniqueCurricula = [...new Set(curricula)];
-
-        // Get events matching child's curriculum or "All"
-        const events = await Event.find({
-            isActive: true,
-            startDate: { $gte: new Date() },
-            $or: [
-                { curriculum: 'All' },
-                { curriculum: { $in: uniqueCurricula } }
-            ]
-        }).sort({ startDate: 1 });
-
+        // Fetch ALL active events, ignoring dates and curriculum completely
+        const events = await Event.find({ isActive: true }).sort({ startDate: 1 });
+        
+        console.log(`✅ Found ${events.length} events to return.`);
         res.json(events);
     } catch (err) {
-        console.error('Get events error:', err);
+        console.error('❌ Get events error:', err);
         res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ============================================
+// GET DIARY
+// ============================================
+router.get('/diary', async (req, res) => {
+    try {
+        const diary = await Diary.find({ parentId: req.user._id }).sort({ date: -1 });
+        res.json(diary);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
+});
+
+// ============================================
+// GET TIMETABLE
+// ============================================
+router.get('/timetable', async (req, res) => {
+    try {
+        const children = await Student.find({ parentId: req.user._id });
+        const conditions = children.map(c => ({ curriculum: c.curriculum, grade: c.grade }));
+        const timetables = await Timetable.find({ $or: conditions, isActive: true }).sort({ createdAt: -1 });
+        res.json(timetables);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
     }
 });
 
