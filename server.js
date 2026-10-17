@@ -89,18 +89,20 @@ const createFirstAdmin = async () => {
         const adminCount = await Admin.countDocuments();
         
         if (adminCount === 0) {
-            const hashedPassword = await bcrypt.hash('Directormichael@2026', 10);
+            const adminEmail = process.env.ADMIN_EMAIL || 'info@joyhomeschool.co.ke';
+            const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+            
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
             const admin = new Admin({
                 fullName: 'Michael Onyango',
-                email: 'rickymuasan@gmail.com',
+                email: adminEmail,
                 password: hashedPassword,
                 role: 'super_admin',
                 isActive: true
             });
             await admin.save();
             console.log('✅ First admin created successfully!');
-            console.log('📧 Email: rickymuasan@gmail.com');
-            console.log('🔑 Password: Directormichael@2026');
+            console.log('📧 Email:', adminEmail);
         } else {
             console.log('✅ Admin already exists');
         }
