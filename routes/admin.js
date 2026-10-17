@@ -137,6 +137,7 @@ router.post('/diary', async (req, res) => {
 // ============================================
 // TIMETABLE MANAGEMENT (SUPER ADMIN ONLY)
 // ============================================
+// Create Timetable
 router.post('/timetable', isSuperAdmin, async (req, res) => {
     try {
         const { studentId, teacherId, day, timeSlots, term, year } = req.body;
@@ -163,6 +164,19 @@ router.post('/timetable', isSuperAdmin, async (req, res) => {
     }
 });
 
+// GET TIMETABLES (For Admin viewing & Super Admin tracking)
+router.get('/timetables', async (req, res) => {
+    try {
+        // Super admin sees all, normal admin sees only their own assigned timetables
+        const filter = req.user.role === 'super_admin' ? {} : { teacherId: req.user._id };
+        const timetables = await Timetable.find(filter).sort({ createdAt: -1 });
+        res.json(timetables);
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// Edit Timetable
 router.put('/timetable/:id', isSuperAdmin, async (req, res) => {
     try {
         const { teacherId, day, timeSlots, term, year } = req.body;
@@ -183,6 +197,7 @@ router.put('/timetable/:id', isSuperAdmin, async (req, res) => {
     }
 });
 
+// Delete Timetable
 router.delete('/timetable/:id', isSuperAdmin, async (req, res) => {
     try {
         await Timetable.findByIdAndDelete(req.params.id);
@@ -195,6 +210,7 @@ router.delete('/timetable/:id', isSuperAdmin, async (req, res) => {
 // ============================================
 // ASSIGNMENT MANAGEMENT (ADMINS & SUPER ADMINS)
 // ============================================
+// Create Assignment
 router.post('/assignment', async (req, res) => {
     try {
         const { studentId, title, description, dueDate, fileData, fileType, fileName } = req.body;
@@ -218,9 +234,10 @@ router.post('/assignment', async (req, res) => {
     }
 });
 
+// Get Assignments
 router.get('/assignments', async (req, res) => {
     try {
-        // Super admin sees all, normal admin sees only their own
+        // Super admin sees all, normal admin sees only their own created assignments
         const filter = req.user.role === 'super_admin' ? {} : { teacherId: req.user._id };
         const assignments = await Assignment.find(filter).sort({ createdAt: -1 });
         res.json(assignments);
@@ -229,6 +246,7 @@ router.get('/assignments', async (req, res) => {
     }
 });
 
+// Grade Assignment
 router.put('/assignment/:id/grade', async (req, res) => {
     try {
         const { marks, feedback } = req.body;

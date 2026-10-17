@@ -302,7 +302,7 @@ router.post('/submit-payment', async (req, res) => {
 
         await payment.save();
 
-        console.log(` Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
+        console.log(`💰 Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
 
         res.status(201).json({
             message: 'Payment submitted successfully! Awaiting admin approval.',
@@ -358,9 +358,12 @@ router.get('/events', async (req, res) => {
 // ============================================
 router.get('/diary', async (req, res) => {
     try {
+        console.log("🚀 Fetching diary for parent:", req.user.email);
         const diary = await Diary.find({ parentId: req.user._id }).sort({ date: -1 });
+        console.log(`✅ Found ${diary.length} diary entries.`);
         res.json(diary);
     } catch (err) { 
+        console.error('❌ Get diary error:', err);
         res.status(500).json({ message: 'Server error' }); 
     }
 });
@@ -396,8 +399,18 @@ router.put('/assignment/:id/submit', async (req, res) => {
     try {
         const { submissionData, submissionType, submissionName } = req.body;
         
+        console.log("🚀 Submission request for assignment:", req.params.id);
+        
         const assignment = await Assignment.findOne({ _id: req.params.id, parentId: req.user._id });
-        if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+        if (!assignment) {
+            console.log("❌ Assignment not found for this parent.");
+            return res.status(404).json({ message: 'Assignment not found' });
+        }
+
+        if (!submissionData) {
+            console.log("❌ No file data provided.");
+            return res.status(400).json({ message: 'No file data provided' });
+        }
 
         assignment.submissionData = submissionData;
         assignment.submissionType = submissionType;
@@ -406,9 +419,12 @@ router.put('/assignment/:id/submit', async (req, res) => {
         assignment.status = 'Submitted';
 
         await assignment.save();
+        
+        console.log("✅ Assignment submitted successfully.");
         res.json({ message: 'Assignment submitted successfully', assignment });
     } catch (err) { 
-        res.status(500).json({ message: 'Server error' }); 
+        console.error("❌ Submit assignment error:", err);
+        res.status(500).json({ message: 'Server error: ' + err.message }); 
     }
 });
 
