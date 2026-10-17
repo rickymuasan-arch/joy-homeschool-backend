@@ -208,17 +208,14 @@ exports.createAdmin = async (req, res) => {
             return res.status(400).json({ message: 'Email already in use' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-
         const user = new User({
-            fullName,
-            email: email.toLowerCase(),
-            password: hashedPassword,
-            role: role || 'admin',
-            isApproved: true,
-            isActive: true
-        });
-
+    fullName,
+    email: email.toLowerCase(),
+    password: password,           // ← Raw password — model hashes it
+    role: role || 'admin',
+    isApproved: true,
+    isActive: true
+});
         await user.save();
 
         console.log(`✅ New admin created: ${fullName} (${email})`);
