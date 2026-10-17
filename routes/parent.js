@@ -8,6 +8,7 @@ const Event = require('../models/Event');
 const User = require('../models/User');
 const Diary = require('../models/Diary');
 const Timetable = require('../models/Timetable');
+const Assignment = require('../models/Assignment');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -301,7 +302,7 @@ router.post('/submit-payment', async (req, res) => {
 
         await payment.save();
 
-        console.log(`💰 Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
+        console.log(` Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
 
         res.status(201).json({
             message: 'Payment submitted successfully! Awaiting admin approval.',
@@ -365,14 +366,47 @@ router.get('/diary', async (req, res) => {
 });
 
 // ============================================
-// GET TIMETABLE
+// GET TIMETABLE (Individual)
 // ============================================
 router.get('/timetable', async (req, res) => {
     try {
-        const children = await Student.find({ parentId: req.user._id });
-        const conditions = children.map(c => ({ curriculum: c.curriculum, grade: c.grade }));
-        const timetables = await Timetable.find({ $or: conditions, isActive: true }).sort({ createdAt: -1 });
+        const timetables = await Timetable.find({ parentId: req.user._id, isActive: true }).sort({ createdAt: -1 });
         res.json(timetables);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
+});
+
+// ============================================
+// GET ASSIGNMENTS (Individual)
+// ============================================
+router.get('/assignments', async (req, res) => {
+    try {
+        const assignments = await Assignment.find({ parentId: req.user._id }).sort({ createdAt: -1 });
+        res.json(assignments);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
+});
+
+// ============================================
+// SUBMIT ASSIGNMENT (PARENT)
+// ============================================
+router.put('/assignment/:id/submit', async (req, res) => {
+    try {
+        const { submissionData, submissionType, submissionName } = req.body;
+        
+        const assignment = await Assignment.findOne({ _id: req.params.id, parentId: req.user._id });
+        if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+
+        assignment.submissionData = submissionData;
+        assignment.submissionType = submissionType;
+        assignment.submissionName = submissionName;
+        assignment.submittedAt = new Date();
+        assignment.status = 'Submitted';
+
+        await assignment.save();
+        res.json({ message: 'Assignment submitted successfully', assignment });
     } catch (err) { 
         res.status(500).json({ message: 'Server error' }); 
     }

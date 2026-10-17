@@ -44,7 +44,9 @@ const {
 
 const Diary = require('../models/Diary');
 const Timetable = require('../models/Timetable');
+const Assignment = require('../models/Assignment');
 const Student = require('../models/Student');
+const User = require('../models/User');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -137,16 +139,21 @@ router.post('/diary', async (req, res) => {
 // ============================================
 router.post('/timetable', isSuperAdmin, async (req, res) => {
     try {
-        const { curriculum, grade, day, timeSlots, term, year } = req.body;
+        const { studentId, teacherId, day, timeSlots, term, year } = req.body;
         
+        const student = await Student.findById(studentId);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const teacher = await User.findById(teacherId);
+        if (!teacher) return res.status(404).json({ message: 'Teacher not found' });
+
         const newTimetable = new Timetable({
-            curriculum, 
-            grade, 
-            day, 
-            timeSlots, 
-            term, 
-            year, 
-            createdBy: req.user._id
+            studentId,
+            studentName: student.fullName,
+            parentId: student.parentId,
+            teacherId,
+            teacherName: teacher.fullName,
+            day, timeSlots, term, year
         });
         
         await newTimetable.save();
@@ -156,10 +163,79 @@ router.post('/timetable', isSuperAdmin, async (req, res) => {
     }
 });
 
+router.put('/timetable/:id', isSuperAdmin, async (req, res) => {
+    try {
+        const { teacherId, day, timeSlots, term, year } = req.body;
+        
+        let teacherName = undefined;
+        if (teacherId) {
+            const teacher = await User.findById(teacherId);
+            if (teacher) teacherName = teacher.fullName;
+        }
+
+        const updated = await Timetable.findByIdAndUpdate(req.params.id, {
+            teacherId, teacherName, day, timeSlots, term, year
+        }, { new: true });
+
+        res.json({ message: 'Timetable updated', timetable: updated });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
 router.delete('/timetable/:id', isSuperAdmin, async (req, res) => {
     try {
         await Timetable.findByIdAndDelete(req.params.id);
         res.json({ message: 'Timetable deleted' });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ============================================
+// ASSIGNMENT MANAGEMENT (ADMINS & SUPER ADMINS)
+// ============================================
+router.post('/assignment', async (req, res) => {
+    try {
+        const { studentId, title, description, dueDate, fileData, fileType, fileName } = req.body;
+        
+        const student = await Student.findById(studentId);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const newAssignment = new Assignment({
+            studentId,
+            studentName: student.fullName,
+            parentId: student.parentId,
+            teacherId: req.user._id,
+            teacherName: req.user.fullName,
+            title, description, dueDate, fileData, fileType, fileName
+        });
+        
+        await newAssignment.save();
+        res.status(201).json({ message: 'Assignment created', assignment: newAssignment });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+router.get('/assignments', async (req, res) => {
+    try {
+        // Super admin sees all, normal admin sees only their own
+        const filter = req.user.role === 'super_admin' ? {} : { teacherId: req.user._id };
+        const assignments = await Assignment.find(filter).sort({ createdAt: -1 });
+        res.json(assignments);
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+router.put('/assignment/:id/grade', async (req, res) => {
+    try {
+        const { marks, feedback } = req.body;
+        const updated = await Assignment.findByIdAndUpdate(req.params.id, {
+            marks, feedback, status: 'Graded'
+        }, { new: true });
+        res.json({ message: 'Graded successfully', assignment: updated });
     } catch (err) { 
         res.status(500).json({ message: err.message }); 
     }

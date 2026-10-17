@@ -8,6 +8,7 @@ const Event = require('../models/Event');
 const User = require('../models/User');
 const Diary = require('../models/Diary');
 const Timetable = require('../models/Timetable');
+const Assignment = require('../models/Assignment');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -159,27 +160,13 @@ router.get('/report-cards/:reportId/download', async (req, res) => {
             doc.image(logoPath, 40, 30, { width: 70 });
         }
 
-        doc.fillColor('#0B1A4A')
-           .fontSize(24)
-           .font('Helvetica-Bold')
-           .text('Joy Homeschool', 130, 40);
-
-        doc.fillColor('#E31B23')
-           .fontSize(11)
-           .font('Helvetica')
-           .text('& Tuition Centre', 130, 68);
-
-        doc.fillColor('#4A5568')
-           .fontSize(9)
-           .text('+254 710 692 228  |  info@joyhomeschool.co.ke  |  www.joyhomeschool.co.ke', 130, 85);
-
+        doc.fillColor('#0B1A4A').fontSize(24).font('Helvetica-Bold').text('Joy Homeschool', 130, 40);
+        doc.fillColor('#E31B23').fontSize(11).font('Helvetica').text('& Tuition Centre', 130, 68);
+        doc.fillColor('#4A5568').fontSize(9).text('+254 710 692 228  |  info@joyhomeschool.co.ke  |  www.joyhomeschool.co.ke', 130, 85);
         doc.moveTo(40, 105).lineTo(555, 105).strokeColor('#E31B23').lineWidth(2).stroke();
 
         // === TITLE ===
-        doc.fillColor('#0B1A4A')
-           .fontSize(16)
-           .font('Helvetica-Bold')
-           .text('STUDENT REPORT CARD', 40, 125, { align: 'center' });
+        doc.fillColor('#0B1A4A').fontSize(16).font('Helvetica-Bold').text('STUDENT REPORT CARD', 40, 125, { align: 'center' });
 
         // === STUDENT INFO ===
         let y = 165;
@@ -315,7 +302,7 @@ router.post('/submit-payment', async (req, res) => {
 
         await payment.save();
 
-        console.log(`💰 Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
+        console.log(` Payment submitted: ${student.fullName} - Ksh ${amount} - ${term}`);
 
         res.status(201).json({
             message: 'Payment submitted successfully! Awaiting admin approval.',
@@ -352,47 +339,12 @@ router.get('/payment-history', async (req, res) => {
 });
 
 // ============================================
-// DOWNLOAD REPORT CARD (LEGACY)
-// ============================================
-router.get('/download-report/:reportId', async (req, res) => {
-    try {
-        const report = await ReportCard.findById(req.params.reportId);
-        if (!report) {
-            return res.status(404).json({ message: 'Report not found' });
-        }
-
-        const student = await Student.findOne({ 
-            _id: report.studentId, 
-            parentId: req.user._id 
-        });
-        if (!student) {
-            return res.status(403).json({ message: 'Access denied' });
-        }
-
-        res.json({
-            fileUrl: report.fileUrl,
-            fileName: report.fileName || 'report-card.pdf',
-            term: report.term,
-            year: report.year,
-            overallGrade: report.overallGrade,
-            teacherRemarks: report.teacherRemarks
-        });
-    } catch (err) {
-        console.error('Download report error:', err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// ============================================
 // GET EVENTS
 // ============================================
 router.get('/events', async (req, res) => {
     try {
         console.log("🚀 Fetching events for parent:", req.user.email);
-        
-        // Fetch ALL active events, ignoring dates and curriculum completely
         const events = await Event.find({ isActive: true }).sort({ startDate: 1 });
-        
         console.log(`✅ Found ${events.length} events to return.`);
         res.json(events);
     } catch (err) {
@@ -414,14 +366,47 @@ router.get('/diary', async (req, res) => {
 });
 
 // ============================================
-// GET TIMETABLE
+// GET TIMETABLE (Individual)
 // ============================================
 router.get('/timetable', async (req, res) => {
     try {
-        const children = await Student.find({ parentId: req.user._id });
-        const conditions = children.map(c => ({ curriculum: c.curriculum, grade: c.grade }));
-        const timetables = await Timetable.find({ $or: conditions, isActive: true }).sort({ createdAt: -1 });
+        const timetables = await Timetable.find({ parentId: req.user._id, isActive: true }).sort({ createdAt: -1 });
         res.json(timetables);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
+});
+
+// ============================================
+// GET ASSIGNMENTS (Individual)
+// ============================================
+router.get('/assignments', async (req, res) => {
+    try {
+        const assignments = await Assignment.find({ parentId: req.user._id }).sort({ createdAt: -1 });
+        res.json(assignments);
+    } catch (err) { 
+        res.status(500).json({ message: 'Server error' }); 
+    }
+});
+
+// ============================================
+// SUBMIT ASSIGNMENT (PARENT)
+// ============================================
+router.put('/assignment/:id/submit', async (req, res) => {
+    try {
+        const { submissionData, submissionType, submissionName } = req.body;
+        
+        const assignment = await Assignment.findOne({ _id: req.params.id, parentId: req.user._id });
+        if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
+
+        assignment.submissionData = submissionData;
+        assignment.submissionType = submissionType;
+        assignment.submissionName = submissionName;
+        assignment.submittedAt = new Date();
+        assignment.status = 'Submitted';
+
+        await assignment.save();
+        res.json({ message: 'Assignment submitted successfully', assignment });
     } catch (err) { 
         res.status(500).json({ message: 'Server error' }); 
     }
