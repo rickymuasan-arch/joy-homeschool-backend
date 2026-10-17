@@ -235,6 +235,9 @@ exports.resetPassword = async (req, res) => {
     try {
         const { token, newPassword } = req.body;
 
+        console.log('🔑 Reset password request received');
+        console.log('Token:', token ? token.substring(0, 10) + '...' : 'MISSING');
+
         if (!token || !newPassword) {
             return res.status(400).json({ message: 'Token and new password are required' });
         }
@@ -249,20 +252,40 @@ exports.resetPassword = async (req, res) => {
         });
 
         if (!user) {
+            console.log('❌ Invalid or expired token');
             return res.status(400).json({ message: 'Invalid or expired reset token' });
         }
 
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        user.resetPasswordToken = null;
-        user.resetPasswordExpires = null;
-        await user.save();
+        console.log('✅ User found:', user.email);
 
-        console.log('Password reset successful for:', user.email);
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+        const result = await User.updateOne(
+            { _id: user._id },
+            { 
+                $set: { 
+                    password: hashedPassword,
+                    resetPasswordToken: null,
+                    resetPasswordExpires: null
+                } 
+            }
+        );
+
+        console.log('📝 Update result:', JSON.stringify(result));
+
+        const verify = await User.findById(user._id);
+        const match = await bcrypt.compare(newPassword, verify.password);
+        console.log('🔍 Password verification:', match ? '✅ MATCHES' : '❌ FAILED');
+
+        if (!match) {
+            return res.status(500).json({ message: 'Password update failed. Please contact admin.' });
+        }
+
+        console.log('✅ Password reset successful for:', user.email);
         res.json({ message: 'Password reset successfully' });
 
     } catch (error) {
-        console.error('Reset password error:', error);
-        res.status(500).json({ message: 'Error resetting password' });
+        console.error('❌ Reset password error:', error);
+        res.status(500).json({ message: 'Error resetting password: ' + error.message });
     }
 };
