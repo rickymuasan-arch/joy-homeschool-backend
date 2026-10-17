@@ -257,13 +257,16 @@ router.get('/download-report/:reportId', async (req, res) => {
 // ============================================
 router.get('/events', async (req, res) => {
     try {
-        const events = await Event.find({
-            isActive: true
-        }).sort({ startDate: 1 });
+        console.log("🚀 Fetching events for parent:", req.user.email);
 
+        // Fetch ALL active events, ignoring dates and curriculum completely
+        const events = await Event.find({ isActive: true }).sort({ startDate: 1 });
+
+        console.log(`✅ Found ${events.length} events to return.`);
+        
         res.json(events);
     } catch (err) {
-        console.error('Get events error:', err);
+        console.error('❌ Get events error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
