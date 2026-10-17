@@ -257,19 +257,8 @@ router.get('/download-report/:reportId', async (req, res) => {
 // ============================================
 router.get('/events', async (req, res) => {
     try {
-        const children = await Student.find({ parentId: req.user._id });
-        
-        const curricula = children.map(child => child.curriculum);
-        const uniqueCurricula = [...new Set(curricula)];
-
         const events = await Event.find({
-            isActive: true,
-            $or: [
-                { curriculum: 'All' },
-                { curriculum: { $in: uniqueCurricula } },
-                { curriculum: { $exists: false } },
-                { curriculum: null }
-            ]
+            isActive: true
         }).sort({ startDate: 1 });
 
         res.json(events);
@@ -278,5 +267,3 @@ router.get('/events', async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
-
-module.exports = router;
