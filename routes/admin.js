@@ -47,6 +47,7 @@ const Timetable = require('../models/Timetable');
 const Assignment = require('../models/Assignment');
 const Student = require('../models/Student');
 const User = require('../models/User');
+const ReportCard = require('../models/ReportCard'); // ADDED: Needed for Report Card edit/delete
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -101,6 +102,29 @@ router.post('/report-cards', uploadReportCard);
 router.get('/report-cards', getReportCards);
 router.delete('/report-cards/:reportId', deleteReportCard);
 
+// ADDED: Edit Report Card
+router.put('/report-cards/:id', isSuperAdmin, async (req, res) => {
+    try {
+        const { term, year, overallGrade, teacherRemarks, classTeacher } = req.body;
+        const updated = await ReportCard.findByIdAndUpdate(req.params.id, {
+            term, year, overallGrade, teacherRemarks, classTeacher
+        }, { new: true });
+        res.json({ message: 'Report card updated', reportCard: updated });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ADDED: Delete Report Card (separate from controller for direct route)
+router.delete('/report-cards/:id/delete', isSuperAdmin, async (req, res) => {
+    try {
+        await ReportCard.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Report card deleted' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // ============================================
 // EVENT MANAGEMENT
 // ============================================
@@ -129,6 +153,37 @@ router.post('/diary', async (req, res) => {
         });
         await newDiary.save();
         res.status(201).json({ message: 'Diary entry added', diary: newDiary });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ADDED: Get All Diaries for Admin table
+router.get('/diary', async (req, res) => {
+    try {
+        const diaries = await Diary.find().sort({ createdAt: -1 });
+        res.json(diaries);
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ADDED: Delete Diary
+router.delete('/diary/:id', isSuperAdmin, async (req, res) => {
+    try {
+        await Diary.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Diary entry deleted' });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ADDED: Edit Diary
+router.put('/diary/:id', isSuperAdmin, async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const updated = await Diary.findByIdAndUpdate(req.params.id, { title, content }, { new: true });
+        res.json({ message: 'Diary updated', diary: updated });
     } catch (err) { 
         res.status(500).json({ message: err.message }); 
     }
@@ -254,6 +309,29 @@ router.put('/assignment/:id/grade', async (req, res) => {
             marks, feedback, status: 'Graded'
         }, { new: true });
         res.json({ message: 'Graded successfully', assignment: updated });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ADDED: Edit Assignment
+router.put('/assignment/:id', isSuperAdmin, async (req, res) => {
+    try {
+        const { title, description, dueDate } = req.body;
+        const updated = await Assignment.findByIdAndUpdate(req.params.id, {
+            title, description, dueDate
+        }, { new: true });
+        res.json({ message: 'Assignment updated', assignment: updated });
+    } catch (err) { 
+        res.status(500).json({ message: err.message }); 
+    }
+});
+
+// ADDED: Delete Assignment
+router.delete('/assignment/:id', isSuperAdmin, async (req, res) => {
+    try {
+        await Assignment.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Assignment deleted' });
     } catch (err) { 
         res.status(500).json({ message: err.message }); 
     }
