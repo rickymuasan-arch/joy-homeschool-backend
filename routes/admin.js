@@ -47,7 +47,7 @@ const Timetable = require('../models/Timetable');
 const Assignment = require('../models/Assignment');
 const Student = require('../models/Student');
 const User = require('../models/User');
-const ReportCard = require('../models/ReportCard'); // ADDED: Needed for Report Card edit/delete
+const ReportCard = require('../models/ReportCard');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -102,6 +102,34 @@ router.post('/report-cards', uploadReportCard);
 router.get('/report-cards', getReportCards);
 router.delete('/report-cards/:reportId', deleteReportCard);
 
+// ADDED: Create Digital Report Card (Manual Entry)
+router.post('/report-cards/digital', async (req, res) => {
+    try {
+        const { studentId, term, year, overallGrade, teacherRemarks, classTeacher, subjects } = req.body;
+        
+        const student = await Student.findById(studentId);
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+
+        const newReport = new ReportCard({
+            studentId,
+            studentName: student.fullName,
+            parentId: student.parentId,
+            term,
+            year,
+            overallGrade,
+            teacherRemarks,
+            classTeacher,
+            subjects, // This will be an array of { subjectName, score }
+            isDigital: true // Flag to know it's not a file
+        });
+
+        await newReport.save();
+        res.status(201).json({ message: 'Digital report card created successfully', report: newReport });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // ADDED: Edit Report Card
 router.put('/report-cards/:id', isSuperAdmin, async (req, res) => {
     try {
@@ -115,7 +143,7 @@ router.put('/report-cards/:id', isSuperAdmin, async (req, res) => {
     }
 });
 
-// ADDED: Delete Report Card (separate from controller for direct route)
+// ADDED: Delete Report Card (Matches frontend call)
 router.delete('/report-cards/:id/delete', isSuperAdmin, async (req, res) => {
     try {
         await ReportCard.findByIdAndDelete(req.params.id);
@@ -158,7 +186,7 @@ router.post('/diary', async (req, res) => {
     }
 });
 
-// ADDED: Get All Diaries for Admin table
+// Get All Diaries for Admin table
 router.get('/diary', async (req, res) => {
     try {
         const diaries = await Diary.find().sort({ createdAt: -1 });
@@ -168,7 +196,7 @@ router.get('/diary', async (req, res) => {
     }
 });
 
-// ADDED: Delete Diary
+// Delete Diary
 router.delete('/diary/:id', isSuperAdmin, async (req, res) => {
     try {
         await Diary.findByIdAndDelete(req.params.id);
@@ -178,7 +206,7 @@ router.delete('/diary/:id', isSuperAdmin, async (req, res) => {
     }
 });
 
-// ADDED: Edit Diary
+// Edit Diary
 router.put('/diary/:id', isSuperAdmin, async (req, res) => {
     try {
         const { title, content } = req.body;

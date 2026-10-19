@@ -7,12 +7,12 @@ const ReportCardSchema = new mongoose.Schema({
         ref: 'Student',
         required: true
     },
-    // ✅ ADD: Quick access fields
+    // Quick access fields
     studentName: {
         type: String,
         required: true
     },
-    // ✅ ADD: Parent reference for access control
+    // Parent reference for access control
     parentId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -20,7 +20,7 @@ const ReportCardSchema = new mongoose.Schema({
     },
     parentName: {
         type: String,
-        required: true
+        default: '' // CHANGED: No longer required to prevent 500 errors
     },
     // Report details
     term: {
@@ -34,9 +34,10 @@ const ReportCardSchema = new mongoose.Schema({
     },
     // Subject details
     subjects: [{
-        name: { type: String, required: true },
+        subjectName: { type: String }, // CHANGED: Matches frontend
+        name: { type: String },        // KEPT: For backwards compatibility
         grade: { type: String },
-        score: { type: Number },
+        score: { type: String },       // CHANGED: String to match frontend input
         remarks: { type: String }
     }],
     overallGrade: {
@@ -56,7 +57,6 @@ const ReportCardSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
-    // ✅ ADD: For storing file content
     fileData: {
         type: String,
         default: null
@@ -68,6 +68,11 @@ const ReportCardSchema = new mongoose.Schema({
     fileName: {
         type: String,
         default: null
+    },
+    // Flag for Digital vs Uploaded
+    isDigital: {
+        type: Boolean,
+        default: false
     },
     // Upload info
     uploadedBy: {
