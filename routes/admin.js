@@ -48,6 +48,8 @@ const Assignment = require('../models/Assignment');
 const Student = require('../models/Student');
 const User = require('../models/User');
 const ReportCard = require('../models/ReportCard');
+const Admin = require('../models/Admin');
+const bcrypt = require('bcryptjs');
 
 // ============================================
 // ALL ROUTES REQUIRE AUTHENTICATION
@@ -365,4 +367,55 @@ router.delete('/assignment/:id', isSuperAdmin, async (req, res) => {
     }
 });
 
+// ============================================
+// EPHORIC TECH SUBSCRIPTION MONITORING
+// ============================================
+router.get('/ephoric/subscriptions', async (req, res) => {
+    try {
+        if (req.user.role !== 'ephoric_admin') return res.status(403).json({ message: 'Access denied. Ephoric Tech only.' });
+
+        const students = await Student.find()
+            .populate('parentId', 'fullName email phone')
+            .sort({ createdAt: -1 });
+
+        res.json(students);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.put('/ephoric/student/:id/lock', async (req, res) => {
+    try {
+        if (req.user.role !== 'ephoric_admin') return res.status(403).json({ message: 'Access denied.' });
+        
+        const student = await Student.findByIdAndUpdate(req.params.id, { 
+            subscriptionStatus: 'Inactive',
+            subscriptionExpiry: null 
+        }, { new: true });
+        
+        res.json({ message: 'Student locked successfully', student });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+router.put('/ephoric/change-password', async (req, res) => {
+    try {
+        if (req.user.role !== 'ephoric_admin') return res.status(403).json({ message: 'Access denied.' });
+        
+        const { currentPassword, newPassword } = req.body;
+        const admin = await Admin.findById(req.user._id);
+        
+        const isMatch = await bcrypt.compare(currentPassword, admin.password);
+        if (!isMatch) return res.status(400).json({ message: 'Current password is incorrect.' });
+        
+        const salt = await bcrypt.genSalt(10);
+        admin.password = await bcrypt.hash(newPassword, salt);
+        await admin.save();
+        
+        res.json({ message: 'Password updated successfully!' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 module.exports = router;
