@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Admin = require('../models/Admin'); // <-- ADDED: Needed to check Ephoric Admins
 const Student = require('../models/Student');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -84,7 +85,13 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: 'Email and password are required' });
         }
 
-        const user = await User.findOne({ email: email.toLowerCase().trim() });
+        const cleanEmail = email.toLowerCase().trim();
+
+        // <-- ADDED: Check Admin collection first (for Ephoric Tech & Admins), then User (for Parents)
+        let user = await Admin.findOne({ email: cleanEmail });
+        if (!user) {
+            user = await User.findOne({ email: cleanEmail });
+        }
 
         if (!user) {
             console.log('User NOT found');
@@ -132,7 +139,7 @@ exports.login = async (req, res) => {
                 fullName: user.fullName,
                 email: user.email,
                 role: user.role,
-                isApproved: user.isApproved,
+                isApproved: user.isApproved || true,
                 isRejected: user.isRejected || false,
                 phone: user.phone || ''
             }
