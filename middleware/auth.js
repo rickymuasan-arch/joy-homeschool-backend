@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Admin = require('../models/Admin'); // 1. ADDED: Need Admin model
 
 const authenticate = async (req, res, next) => {
     try {
@@ -8,7 +9,13 @@ const authenticate = async (req, res, next) => {
             return res.status(401).json({ message: 'No token, authorization denied' });
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.id);
+        
+        // 2. ADDED: Check Admin collection first (for Ephoric), then User collection
+        let user = await Admin.findById(decoded.id);
+        if (!user) {
+            user = await User.findById(decoded.id);
+        }
+
         if (!user) {
             return res.status(401).json({ message: 'Token is not valid' });
         }
@@ -21,7 +28,8 @@ const authenticate = async (req, res, next) => {
 };
 
 const isAdmin = (req, res, next) => {
-    if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+    // 3. ADDED: Allow ephoric_admin to pass this check
+    if (req.user.role !== 'admin' && req.user.role !== 'super_admin' && req.user.role !== 'ephoric_admin') {
         return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
     next();
