@@ -428,4 +428,47 @@ router.put('/assignment/:id/submit', async (req, res) => {
     }
 });
 
+// ============================================
+// VERIFY PAYSTACK SUBSCRIPTION
+// ============================================
+router.post('/verify-subscription', async (req, res) => {
+    try {
+        const { reference, studentId } = req.body;
+        const student = await Student.findById(studentId);
+        
+        if (!student) return res.status(404).json({ message: 'Student not found' });
+        if (student.parentId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Unauthorized' });
+        }
+
+        // Verify with Paystack
+        const response = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+            headers: {
+                Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+            }
+        });
+        
+        const data = await response.json();
+
+        // If payment is successful and amount is 600 (Ksh 600 = 60000 kobo in Paystack)
+        if (data.status && data.data.status === 'success' && data.data.amount >= 60000) {
+            // Calculate expiry (e.g., 120 days for a term)
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + 120); // Roughly 1 term
+
+            student.subscriptionStatus = 'Active';
+            student.subscriptionExpiry = expiryDate;
+            student.subscriptionTerm = 'Current Term';
+            await student.save();
+
+            res.json({ message: 'Subscription activated!', student });
+        } else {
+            res.status(400).json({ message: 'Payment verification failed or incorrect amount' });
+        }
+    } catch (err) {
+        console.error('❌ Paystack verify error:', err);
+        res.status(500).json({ message: err.message });
+    }
+});
+
 module.exports = router;

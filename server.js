@@ -64,6 +64,13 @@ const generalLimiter = rateLimit({
 app.use(generalLimiter);
 
 // ============================================
+// ✅ NEW: PAYSTACK CONFIG ROUTE (SAFE)
+// ============================================
+app.get('/api/config/paystack', (req, res) => {
+    res.json({ publicKey: process.env.PAYSTACK_PUBLIC_KEY });
+});
+
+// ============================================
 // JOY HOMESCHOOL ROUTES
 // ============================================
 const authRoutes = require('./routes/auth');

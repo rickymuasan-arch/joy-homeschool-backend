@@ -58,6 +58,22 @@ const StudentSchema = new mongoose.Schema({
     school: {
         type: String,
         trim: true
+    },
+    // ==========================================
+    // ADDED: SUBSCRIPTION FIELDS
+    // ==========================================
+    subscriptionStatus: {
+        type: String,
+        enum: ['Active', 'Inactive'],
+        default: 'Inactive'
+    },
+    subscriptionTerm: {
+        type: String, // e.g., "Term 1 2026"
+        default: null
+    },
+    subscriptionExpiry: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true
