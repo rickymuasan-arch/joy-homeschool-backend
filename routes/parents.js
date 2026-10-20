@@ -455,4 +455,20 @@ router.post('/verify-subscription', async (req, res) => {
     }
 });
 
+// ============================================
+// REMOVE CHILD (PARENT)
+// ============================================
+router.delete('/child/:studentId', async (req, res) => {
+    try {
+        const student = await Student.findOne({ _id: req.params.studentId, parentId: req.user._id });
+        if (!student) {
+            return res.status(403).json({ message: 'Unauthorized or student not found' });
+        }
+        await Student.findByIdAndDelete(req.params.studentId);
+        res.json({ message: 'Child removed successfully' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 module.exports = router;
